@@ -138,10 +138,10 @@ window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); FIN.in
 /* ---------- equipe (aparece na aba Ajustes) ---------- */
 FIN.ajustesHTML = () => {
   const dono = FIN.papel === "dono", t = FIN.team;
-  if (!t) { FIN.loadTeam(); return `<div class="card"><h3>Empresa e equipe</h3><p style="color:var(--muted)">Carregando...</p></div>`; }
-  return `<div class="card" id="equipe"><h3>Empresa e equipe</h3>
+  if (!t) { FIN.loadTeam(); return `<div class="set"><div><h3>Empresa e equipe</h3></div><div class="muted">Carregando...</div></div>`; }
+  return `<div class="set" id="equipe"><div><h3>Empresa e equipe</h3><p>Quem tem acesso a esta empresa e o que cada pessoa pode fazer.</p></div><div>
     ${dono ? `<div class="form" style="margin:12px 0"><label class="f full">Nome da empresa<span style="display:flex;gap:8px"><input id="eq_nome" value="${esc(FIN.empresa.nome)}" maxlength="80"><button class="btn small" data-eq="renomear">Salvar nome</button></span></label></div>` : `<p style="color:var(--muted);margin:.3em 0 12px">${esc(FIN.empresa.nome)} · você ${FIN.papel === "editor" ? "pode editar" : "só visualiza"}</p>`}
-    <div class="rows">${t.membros.map(mb => `<div class="mem"><div style="min-width:0"><b>${esc(mb.email)}${mb.user_id === FIN.user.id ? " (você)" : ""}</b><span>${PAPEL[mb.papel]}</span></div>
+    <div class="panel">${t.membros.map(mb => `<div class="mem"><div style="min-width:0"><b>${esc(mb.email)}${mb.user_id === FIN.user.id ? " (você)" : ""}</b><span>${PAPEL[mb.papel]}</span></div>
       ${dono && mb.papel !== "dono" ? `<select data-eqpapel="${mb.user_id}" aria-label="Papel"><option value="editor" ${mb.papel === "editor" ? "selected" : ""}>Pode editar</option><option value="leitor" ${mb.papel === "leitor" ? "selected" : ""}>Só visualiza</option></select><button class="btn ghost small" data-eq="remover" data-uid="${mb.user_id}">Remover</button>` : ""}
       ${!dono && mb.user_id === FIN.user.id ? `<button class="btn ghost small" data-eq="deixar">Sair desta empresa</button>` : ""}</div>`).join("")}
       ${t.convites.map(c => `<div class="mem pend"><div style="min-width:0"><b>${esc(c.email)}</b><span>Convite pendente · ${PAPEL[c.papel]}</span></div>${dono ? `<button class="btn ghost small" data-eq="cancelar" data-email="${esc(c.email)}">Cancelar</button>` : ""}</div>`).join("")}</div>
@@ -149,7 +149,7 @@ FIN.ajustesHTML = () => {
       <label class="f">Permissão<select id="eq_papel"><option value="editor">Pode editar</option><option value="leitor">Só visualiza</option></select></label></div>
       <div class="actions" style="justify-content:flex-start;margin-top:10px"><button class="btn primary small" data-eq="convidar">Convidar</button></div>
       <p style="font-size:13px;color:var(--muted);margin:.8em 0 0">A pessoa não recebe e-mail automático. Mande o link do app para ela e peça para criar a conta com <b>esse mesmo e-mail</b>. O acesso libera quando ela entrar.</p>` : ""}
-  </div>`;
+  </div></div>`;
 };
 FIN.loadTeam = async () => {
   if (FIN._loadingTeam) return; FIN._loadingTeam = true;
@@ -285,6 +285,7 @@ async function iniciar(){
   FIN.empresa = FIN.empresas.find(e => e.id === LS.get("fin.empresa")) || FIN.empresas[0];
   LS.set("fin.empresa", FIN.empresa.id); FIN.papel = FIN.empresa.papel;
   const nm = document.getElementById("empNome"); if (nm) nm.textContent = FIN.empresa.nome;
+  const ic = document.getElementById("empIc"); if (ic) ic.textContent = FIN.empresa.nome.replace(/[^A-Za-zÀ-ÿ0-9 ]/g, " ").trim().split(/\s+/).slice(0, 2).map(w => w[0]).join("").toUpperCase() || "F";
   document.title = FIN.empresa.nome + " · Financeiro";
   root.hidden = true; root.innerHTML = "";
   resolveDb(makeDb(FIN.sb, FIN.empresa.id));
