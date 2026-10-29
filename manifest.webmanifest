@@ -1,13 +1,13 @@
 {
-  "name": "Financeiro",
-  "short_name": "Financeiro",
-  "description": "Contas a pagar e a receber da sua empresa.",
+  "name": "Finance",
+  "short_name": "Finance",
+  "description": "Contas, cartões e orçamento, para uso pessoal ou da empresa.",
   "lang": "pt-BR",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#612b4a",
-  "theme_color": "#612b4a",
+  "background_color": "#001c28",
+  "theme_color": "#001c28",
   "orientation": "any",
   "icons": [
     {

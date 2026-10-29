@@ -1,4 +1,4 @@
-/* Financeiro · versão hospedada
+/* Finance · versão hospedada
    Login, empresas, equipe e a ponte entre o app e o Supabase.
    O app conversa com window.claude.use("db"), igual à versão no Claude;
    aqui essa peça passa a falar com o Supabase. */
@@ -50,7 +50,7 @@ window.claude = { use: async n => n === "db" ? dbReady : n === "user" ? userShim
 
 /* ---------- tela cheia de login / empresa ---------- */
 const root = document.createElement("div"); root.id = "authRoot"; document.body.appendChild(root);
-function screen(inner){ root.innerHTML = `<div class="auth"><div class="auth-card"><div class="auth-brand"><span class="auth-ic">F</span><div><b>Financeiro</b><small>Contas, cartões e orçamento num lugar só</small></div></div>${inner}</div></div>`; root.hidden = false; const f = root.querySelector("input"); f && f.focus(); }
+function screen(inner){ root.innerHTML = `<div class="auth"><div class="auth-card"><div class="auth-brand"><img class="auth-ic" src="icons/icon-192.png" alt="" width="44" height="44"><div><b>Finance</b><small>Gestão de finanças</small></div></div>${inner}</div></div>`; root.hidden = false; const f = root.querySelector("input"); f && f.focus(); }
 function msg(t, kind){ const m = root.querySelector(".auth-msg"); if(m){ m.textContent = t; m.className = "auth-msg " + (kind || ""); m.hidden = !t; } }
 function busy(btn, on, txt){ if(!btn) return; btn.disabled = on; if(txt) btn.textContent = txt; }
 const traduz = e => {
@@ -156,7 +156,7 @@ function abrirConta(){
     <p style="margin:0;color:var(--muted);font-size:14px">Entrou como <b style="color:var(--fg)">${esc(FIN.user.email)}</b></p>
     <div><h2 style="margin-bottom:8px">Empresas</h2><div class="rows">${FIN.empresas.map(e => `<button class="emp-row ${e.id === FIN.empresa.id ? "on" : ""}" data-emp="${e.id}"><b>${esc(e.nome)}</b><span>${PAPEL[e.papel]}</span></button>`).join("")}</div>
       <div class="actions" style="justify-content:flex-start;margin-top:10px"><button class="btn small" data-nova>+ Novo espaço</button></div></div>
-    ${instalado ? "" : `<div class="note"><b>Instalar no celular ou computador</b><br>${FIN.installEvt ? `Coloque o Financeiro na tela inicial, com ícone próprio.<div style="margin-top:8px"><button class="btn primary small" data-inst>Instalar o app</button></div>` : ios ? "No iPhone: toque no botão Compartilhar do Safari (o quadrado com a seta) e depois em <b>Adicionar à Tela de Início</b>." : "No Chrome do Android: menu de três pontinhos e <b>Instalar app</b> ou <b>Adicionar à tela inicial</b>."}</div>`}
+    ${instalado ? "" : `<div class="note"><b>Instalar no celular ou computador</b><br>${FIN.installEvt ? `Coloque o Finance na tela inicial, com ícone próprio.<div style="margin-top:8px"><button class="btn primary small" data-inst>Instalar o app</button></div>` : ios ? "No iPhone: toque no botão Compartilhar do Safari (o quadrado com a seta) e depois em <b>Adicionar à Tela de Início</b>." : "No Chrome do Android: menu de três pontinhos e <b>Instalar app</b> ou <b>Adicionar à tela inicial</b>."}</div>`}
     <div class="actions"><button class="btn danger" data-sair>Sair da conta</button></div></div></div>`;
   const close = () => { m.innerHTML = ""; };
   m.querySelector(".overlay").addEventListener("click", ev => {
@@ -222,7 +222,7 @@ document.addEventListener("click", async ev => {
   } else if (a === "renomear") {
     const nome = document.getElementById("eq_nome").value.trim(); if (!nome) return aviso("Digite o nome");
     r = await FIN.sb.from("empresas").update({ nome }).eq("id", e);
-    if (!r.error) { FIN.empresa.nome = nome; const eb = document.getElementById("empNome"); if (eb) eb.textContent = nome; document.title = nome + " · Financeiro"; aviso("Nome salvo"); }
+    if (!r.error) { FIN.empresa.nome = nome; const eb = document.getElementById("empNome"); if (eb) eb.textContent = nome; document.title = nome + " · Finance"; aviso("Nome salvo"); }
   }
   if (r && r.error) aviso("Não deu certo. Tente de novo.");
   FIN.team = null; FIN.loadTeam();
@@ -325,7 +325,7 @@ async function iniciar(){
   LS.set("fin.empresa", FIN.empresa.id); FIN.papel = FIN.empresa.papel;
   const nm = document.getElementById("empNome"); if (nm) nm.textContent = FIN.empresa.nome;
   const ic = document.getElementById("empIc"); if (ic) ic.textContent = FIN.empresa.nome.replace(/[^A-Za-zÀ-ÿ0-9 ]/g, " ").trim().split(/\s+/).slice(0, 2).map(w => w[0]).join("").toUpperCase() || "F";
-  document.title = FIN.empresa.nome + " · Financeiro";
+  document.title = FIN.empresa.nome + " · Finance";
   root.hidden = true; root.innerHTML = "";
   resolveDb(makeDb(FIN.sb, FIN.empresa.id));
 }
