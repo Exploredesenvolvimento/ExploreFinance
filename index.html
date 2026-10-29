@@ -631,7 +631,7 @@ img{max-width:100%}
 
 <script src="config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
-<script src="boot.js?v=1.8.0"></script>
+<script src="boot.js?v=1.8.1"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
 <script>
@@ -1360,10 +1360,10 @@ const planoRow=p=>`<div class="rowline p"><input aria-label="Plano de contas" va
 
 /* ---------- eventos da tela ---------- */
 view.addEventListener("click",e=>{
-  const tm=e.target.closest("[data-tema]");if(tm){const k=tm.dataset.tema;if(k==="finance")delete document.documentElement.dataset.tema;else document.documentElement.dataset.tema=k;try{localStorage.setItem("fin.tema",k);}catch(_){}render(true);return;}
-  const ct=e.target.closest("[data-cat]");if(ct&&S.canWrite){openCategoria(ct.dataset.cat);return;}
-  const md=e.target.closest("[data-modo]");if(md){md.disabled=true;escolherModo(md.dataset.modo);return;}
-  const mt=e.target.closest("[data-trocamodo]");if(mt){trocarModo(mt.dataset.trocamodo);return;}
+  const tm=e.target.closest("button[data-tema]");if(tm&&view.contains(tm)){const k=tm.dataset.tema;if(k==="finance")delete document.documentElement.dataset.tema;else document.documentElement.dataset.tema=k;try{localStorage.setItem("fin.tema",k);}catch(_){}render(true);return;}
+  const ct=e.target.closest("button[data-cat]");if(ct&&S.canWrite){openCategoria(ct.dataset.cat);return;}
+  const md=e.target.closest("button[data-modo]");if(md){md.disabled=true;escolherModo(md.dataset.modo);return;}
+  const mt=e.target.closest("button[data-trocamodo]");if(mt){trocarModo(mt.dataset.trocamodo);return;}
   const go=e.target.closest("[data-go]");if(go){irPara(go.dataset.go);return;}
   const nw=e.target.closest("[data-new]");if(nw){openNew(nw.dataset.new);return;}
   const mv=e.target.closest("[data-mov]");if(mv){const[f,v]=mv.dataset.mov.split(":");S.mov[f]=v;S.mov.open=null;render();return;}
