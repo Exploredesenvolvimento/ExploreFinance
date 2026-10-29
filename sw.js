@@ -1,7 +1,7 @@
 /* Service worker do Financeiro: deixa o app instalável e abrindo rápido.
    Os dados NÃO ficam guardados aqui: eles sempre vêm do Supabase. */
-const VERSAO = "fin-1.1.0";
-const BASE = ["./", "./index.html", "./boot.js?v=1.1.0", "./manifest.webmanifest", "./icons/icon-192.png", "./icons/icon-512.png"];
+const VERSAO = "fin-1.7.0";
+const BASE = ["./", "./index.html", "./boot.js?v=1.7.0", "./manifest.webmanifest", "./icons/icon-192.png", "./icons/icon-512.png"];
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(VERSAO).then(c => c.addAll(BASE)).then(() => self.skipWaiting()));

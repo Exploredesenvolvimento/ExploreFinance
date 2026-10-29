@@ -23,11 +23,34 @@ const dlShim = { async save({ filename, data }){
   setTimeout(() => URL.revokeObjectURL(url), 4000);
   return { status: "saved" };
 } };
-window.claude = { use: async n => n === "db" ? dbReady : n === "user" ? userShim : n === "downloads" ? dlShim : null };
+/* Anexos: bucket privado "anexos" no Supabase Storage, uma pasta por empresa.
+   O id guardado no lançamento é o caminho do arquivo; para abrir, o app pede um link temporário. */
+const extDe = t => ({ "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif", "application/pdf": "pdf" })[t] || "bin";
+const urlCache = new Map();
+const assetsShim = {
+  async upload(file, opt){
+    await dbReady; if (FIN.papel === "leitor") throw { code: "not_granted" };
+    const type = (opt && opt.type) || file.type;
+    if (!/^(image\/(png|jpeg|gif|webp)|application\/pdf)$/.test(type)) throw { code: "unsupported_type" };
+    if (file.size > 10485760) throw { code: "too_large" };
+    const rnd = (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
+    const path = FIN.empresa.id + "/" + rnd + "." + extDe(type);
+    const { error } = await FIN.sb.storage.from("anexos").upload(path, file, { contentType: type, upsert: false });
+    if (error) throw { code: /row-level|403|Unauthorized/i.test(error.message + error.code) ? "not_granted" : /size|413/i.test(error.message + error.code) ? "too_large" : /mime|415/i.test(error.message + error.code) ? "unsupported_type" : "upstream_error", message: error.message };
+    return { id: path, url: "", sizeBytes: file.size, contentType: type };
+  },
+  async delete(path){ await dbReady; urlCache.delete(path); const { data } = await FIN.sb.storage.from("anexos").remove([path]); return { deleted: !!(data && data.length) }; },
+  async urlFor(path){
+    await dbReady; const c = urlCache.get(path); if (c && c.ate > Date.now()) return c.url;
+    const { data, error } = await FIN.sb.storage.from("anexos").createSignedUrl(path, 3600);
+    if (error) throw error; urlCache.set(path, { url: data.signedUrl, ate: Date.now() + 3300e3 }); return data.signedUrl;
+  }
+};
+window.claude = { use: async n => n === "db" ? dbReady : n === "user" ? userShim : n === "downloads" ? dlShim : n === "assets" ? (await dbReady, assetsShim) : null };
 
 /* ---------- tela cheia de login / empresa ---------- */
 const root = document.createElement("div"); root.id = "authRoot"; document.body.appendChild(root);
-function screen(inner){ root.innerHTML = `<div class="auth"><div class="auth-card"><div class="auth-brand"><span class="auth-ic">F</span><div><b>Financeiro</b><small>Contas a pagar e a receber da sua empresa</small></div></div>${inner}</div></div>`; root.hidden = false; const f = root.querySelector("input"); f && f.focus(); }
+function screen(inner){ root.innerHTML = `<div class="auth"><div class="auth-card"><div class="auth-brand"><span class="auth-ic">F</span><div><b>Financeiro</b><small>Contas, cartões e orçamento num lugar só</small></div></div>${inner}</div></div>`; root.hidden = false; const f = root.querySelector("input"); f && f.focus(); }
 function msg(t, kind){ const m = root.querySelector(".auth-msg"); if(m){ m.textContent = t; m.className = "auth-msg " + (kind || ""); m.hidden = !t; } }
 function busy(btn, on, txt){ if(!btn) return; btn.disabled = on; if(txt) btn.textContent = txt; }
 const traduz = e => {
@@ -94,22 +117,33 @@ function telaNovaSenha(){
   };
 }
 function telaCriarEmpresa(primeira){
-  screen(`<h2 class="auth-h">${primeira ? "Qual é a sua empresa?" : "Nova empresa"}</h2>
-    <p class="auth-p">${primeira ? "Os dados ficam separados por empresa. Depois você pode convidar sócios e funcionários." : "Ela começa vazia, com os dados separados das outras empresas."}</p>
-    <form id="emForm" class="auth-form" novalidate><label>Nome da empresa<input id="em_nome" maxlength="80" placeholder="Ex.: EXPLORE Desenvolvimento"></label>
+  let modo = "";
+  screen(`<h2 class="auth-h">${primeira ? "Vamos começar" : "Novo espaço"}</h2>
+    <p class="auth-p">${primeira ? "Cada espaço tem os dados separados. Depois você pode convidar outras pessoas." : "Ele começa vazio, com os dados separados dos outros."}</p>
+    <form id="emForm" class="auth-form" novalidate>
+      <div class="auth-modo" role="group" aria-label="Para que vai usar"><button type="button" data-modo="pessoal"><b>Pessoal ou família</b><small>Contas da casa e orçamento</small></button><button type="button" data-modo="empresa"><b>Empresa</b><small>Contas a pagar e a receber</small></button></div>
+      <label><span id="em_lbl">Nome</span><input id="em_nome" maxlength="80" placeholder="Escolha uma das opções acima"></label>
     <div class="auth-msg" hidden></div><button class="btn primary auth-go" type="submit">Começar</button></form>
     <div class="auth-links">${primeira ? `<button id="emSair">Sair</button>` : `<button id="emVoltar">Voltar</button>`}</div>`);
   const sair = root.querySelector("#emSair"), voltar = root.querySelector("#emVoltar");
   if (sair) sair.onclick = sairConta; if (voltar) voltar.onclick = () => { root.hidden = true; };
+  root.querySelectorAll("[data-modo]").forEach(b => b.onclick = () => {
+    modo = b.dataset.modo; root.querySelectorAll("[data-modo]").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+    root.querySelector("#em_lbl").textContent = modo === "pessoal" ? "Nome deste espaço" : "Nome da empresa";
+    root.querySelector("#em_nome").placeholder = modo === "pessoal" ? "Ex.: Casa da família Duque" : "Ex.: EXPLORE Desenvolvimento";
+    root.querySelector("#em_nome").focus(); msg("");
+  });
   root.querySelector("#emForm").onsubmit = async ev => {
     ev.preventDefault(); const nome = root.querySelector("#em_nome").value.trim(); const btn = root.querySelector(".auth-go");
-    if (!nome) return msg("Digite o nome da empresa.", "err");
+    if (!modo) return msg("Escolha se é para uso pessoal ou de empresa.", "err");
+    if (!nome) return msg(modo === "pessoal" ? "Dê um nome para este espaço." : "Digite o nome da empresa.", "err");
     busy(btn, true, "Criando...");
     const { data, error } = await FIN.sb.rpc("criar_empresa", { p_nome: nome });
     if (error) { busy(btn, false, "Começar"); return msg(traduz(error), "err"); }
-    LS.set("fin.empresa", data); location.reload();
+    LS.set("fin.empresa", data); LS.set("fin.modo." + data, modo); location.reload();
   };
 }
+FIN.consumirModo = () => { if (!FIN.empresa) return null; const k = "fin.modo." + FIN.empresa.id, m = LS.get(k); LS.del(k); return m; };
 async function sairConta(){ await FIN.sb.auth.signOut(); LS.del("fin.empresa"); location.reload(); }
 
 /* ---------- conta, empresas e instalação ---------- */
@@ -121,7 +155,7 @@ function abrirConta(){
     <div class="hd"><h3>Sua conta</h3><button class="btn ghost small" data-x aria-label="Fechar">&times;</button></div>
     <p style="margin:0;color:var(--muted);font-size:14px">Entrou como <b style="color:var(--fg)">${esc(FIN.user.email)}</b></p>
     <div><h2 style="margin-bottom:8px">Empresas</h2><div class="rows">${FIN.empresas.map(e => `<button class="emp-row ${e.id === FIN.empresa.id ? "on" : ""}" data-emp="${e.id}"><b>${esc(e.nome)}</b><span>${PAPEL[e.papel]}</span></button>`).join("")}</div>
-      <div class="actions" style="justify-content:flex-start;margin-top:10px"><button class="btn small" data-nova>+ Nova empresa</button></div></div>
+      <div class="actions" style="justify-content:flex-start;margin-top:10px"><button class="btn small" data-nova>+ Novo espaço</button></div></div>
     ${instalado ? "" : `<div class="note"><b>Instalar no celular ou computador</b><br>${FIN.installEvt ? `Coloque o Financeiro na tela inicial, com ícone próprio.<div style="margin-top:8px"><button class="btn primary small" data-inst>Instalar o app</button></div>` : ios ? "No iPhone: toque no botão Compartilhar do Safari (o quadrado com a seta) e depois em <b>Adicionar à Tela de Início</b>." : "No Chrome do Android: menu de três pontinhos e <b>Instalar app</b> ou <b>Adicionar à tela inicial</b>."}</div>`}
     <div class="actions"><button class="btn danger" data-sair>Sair da conta</button></div></div></div>`;
   const close = () => { m.innerHTML = ""; };
@@ -224,8 +258,13 @@ function makeDb(sb, emp){
   async function ensure(col, onErr){ if (loaded.get(col) || loaded.get(col) === 0) return; loaded.set(col, 0);
     try { await load(col); emitCol(col); [...docSubs.keys()].filter(p => colOf(p) === col).forEach(emitDoc); }
     catch (e) { loaded.delete(col); onErr && onErr(e); } }
+  /* Busca todas as coleções antes de avisar o app, e avisa recorrentes e configuração antes dos lançamentos:
+     assim o app nunca vê os meses apagados de uma recorrente que, para ele, ainda existe. */
   async function refresh(){ if (document.hidden || pending > 0) return;
-    for (const col of [...loaded.keys()].filter(c => loaded.get(c) === true)) { try { if (await load(col)) { emitCol(col); [...docSubs.keys()].filter(p => colOf(p) === col).forEach(emitDoc); } } catch (_) {} } }
+    const mudou = [];
+    for (const col of [...loaded.keys()].filter(c => loaded.get(c) === true)) { try { if (await load(col)) mudou.push(col); } catch (_) {} }
+    mudou.sort((a, b) => (a === "lancamentos") - (b === "lancamentos"))
+      .forEach(col => { emitCol(col); [...docSubs.keys()].filter(p => colOf(p) === col).forEach(emitDoc); }); }
   setInterval(refresh, 30000);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
   window.addEventListener("focus", refresh);
