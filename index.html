@@ -792,6 +792,18 @@ html,body{max-width:100%;overflow-x:clip}
   .item .btn.pay .pt{display:none}
   .dayh{padding:9px 14px 7px}
 }
+
+/* fatura como uma linha, contas repetidas */
+.item.fat .ic{background:color-mix(in srgb,var(--c6) 16%,var(--surface));color:color-mix(in srgb,var(--c6) 82%,var(--fg))}
+.dup{border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:grid;gap:8px;background:var(--surface)}
+.dup>b{font-size:14.5px}
+.dup-l{display:grid;gap:4px;font-size:13px;color:var(--muted)}
+.dup .actions{justify-content:flex-start;margin:0}
+.fat-tot{display:flex;justify-content:space-between;align-items:baseline;gap:10px;background:var(--surface-2);border-radius:12px;padding:12px 14px}
+.fat-tot b{font-size:20px;font-variant-numeric:tabular-nums}
+.alert.caixa{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:start;gap:4px 10px}
+.alert.caixa>svg{margin-top:2px}
+.alert.caixa>.link{grid-column:2;justify-self:start}
 /* trava com PIN */
 body.travado{overflow:hidden}
 #pinLock{position:fixed;inset:0;z-index:9999;background:var(--bg);display:grid;place-items:center;padding:24px 16px;overflow:auto}
@@ -1318,6 +1330,7 @@ function vInicio(){
   }
   const ac=alertaCaixa();
   if(ac.length)out+=`<div class="alert caixa" role="status"><svg class="i" viewBox="0 0 24 24"><path d="M12 3.5 21.5 20h-19z"/><path d="M12 10v4.5M12 17.2v.3"/></svg><span>O saldo ${ac.length>1?"de "+ac.length+" contas fica":"do "+esc(ac[0].nome)+" fica"} negativo nos próximos dias: ${ac.map(a=>`${esc(a.nome)} em ${a.quando.slice(8,10)}/${a.quando.slice(5,7)}, chegando a ${money(a.min)}${a.cartoes.length?`, contando a fatura do ${a.cartoes.map(esc).join(" e do ")}, que é paga por esse banco`:""}`).join("; ")}.${ac.some(a=>a.cartoes.length)?" Se a fatura sai de outro banco, ajuste em Bancos e cartões.":""}</span><button class="link" data-go="${ac.every(a=>a.cartoes.length)?"bancos":"contas"}">${ac.every(a=>a.cartoes.length)?"Ver bancos e cartões":"Ver as contas"}</button></div>`;
+  out+=avisoRepetidas();
   out+=`<section class="sec"><div class="hero">
       <div><div class="k">Saldo em caixa hoje</div><div class="big" data-count="${r2(sd.total)}">${amt(sd.total,sd.total<0?"− ":"")}</div>
         <div class="k" style="margin-top:6px">${c.contas.length?`Em ${c.contas.length} conta${c.contas.length>1?"s":""} · <button class="link" data-go="bancos">ver por banco</button>`:`<button class="link" data-go="bancos">Cadastre seus bancos</button> para ver o saldo real`}</div></div>
@@ -1335,7 +1348,7 @@ function vInicio(){
   <div class="grid two">
     <section class="sec"><div class="sec-h"><h2>A vencer nos próximos 7 dias</h2><button class="link" data-go="contas">Ver todos os lançamentos</button></div>
       ${atras.length?`<div class="alert"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5M12 16.2v.3"/></svg>${atras.length} conta${atras.length>1?"s":""} em atraso, somando ${money(atras.reduce((s,l)=>s+(Number(l.valor)||0),0))}</div>`:""}
-      ${[...atras,...prox].length?`<div class="panel list">${listaPorDia([...atras,...prox].slice(0,10))}</div>`:nL?'<div class="panel"><div class="empty"><b>Nada vencendo nos próximos 7 dias.</b>Quando houver, as contas aparecem aqui com o botão Paguei.</div></div>':ghost(fakeRows(),"Suas próximas contas aparecem aqui","Lance as contas a pagar e a receber e acompanhe o que vence na semana.",`<button class="btn primary small" data-new="uma">Fazer o primeiro lançamento</button>`)}
+      ${[...atras,...prox].length?`<div class="panel list">${listaPorDia(comFaturas([...atras,...prox]).slice(0,10))}</div>`:nL?'<div class="panel"><div class="empty"><b>Nada vencendo nos próximos 7 dias.</b>Quando houver, as contas aparecem aqui com o botão Paguei.</div></div>':ghost(fakeRows(),"Suas próximas contas aparecem aqui","Lance as contas a pagar e a receber e acompanhe o que vence na semana.",`<button class="btn primary small" data-new="uma">Fazer o primeiro lançamento</button>`)}
       ${resumoPlano(d)}</section>
     <section class="sec"><div class="sec-h"><h2>Maiores despesas de ${MESES[S.m-1]}</h2><button class="link" data-go="mov">Relatórios</button></div>${porPlano(d.venc)}</section>
   </div>`;
@@ -1755,10 +1768,10 @@ function drawMovCharts(){
       onHover:(e)=>{e.native.target.style.cursor="pointer";},
       onClick:(e,els,ch)=>{let i=els&&els.length?els[0].index:Math.round(ch.scales.x.getValueForPixel(e.x));if(!(i>=0&&i<12))return;setTimeout(()=>{S.m=i+1;S.mov.per="mes";S.mov.open=null;setMonthLabel();render();toast("Mostrando "+MESES[S.m-1]);},0);}}}));}
 }
-function openPayFatura(card){
-  const k=ymKey(S.y,S.m),its=live().filter(l=>l.cartao===card&&!l.pago&&!isIn(l)&&ymOf(l.venc)===k);if(!its.length)return;
+function openPayFatura(card,venc){
+  const k=ymKey(S.y,S.m),its=live().filter(l=>l.cartao===card&&!l.pago&&!isIn(l)&&(venc?l.venc===venc:ymOf(l.venc)===k));if(!its.length)return;
   const c=(cfg().cartoes||[]).find(x=>x.nome===card)||{},tot=its.reduce((s,l)=>s+(Number(l.valor)||0),0);
-  modal(hd("Pagar fatura: "+esc(card))+`<div class="note">${its.length} conta(s) deste cartão vencem em ${MESES[S.m-1]}, somando <b class="num">${money(tot)}</b>. Todas serão marcadas como pagas.</div>
+  modal(hd("Pagar fatura: "+esc(card))+`<div class="note">${its.length} conta(s) deste cartão vencem em ${venc?br(venc):MESES[S.m-1]}, somando <b class="num">${money(tot)}</b>. Todas serão marcadas como pagas.</div>
     <div class="form"><label class="f">Data do pagamento<input id="pf_data" type="date" value="${today()}"></label>
     <label class="f">Saiu de qual banco<select id="pf_banco">${opts(bancos(),c.banco||"","Escolha o banco")}</select></label></div>
     <div class="actions"><button class="btn" data-close>Cancelar</button><button class="btn primary" id="okPf">Marcar ${its.length} como pagas</button></div>`,
@@ -2870,7 +2883,87 @@ function listaPorDia(ls){
   const nome=k=>{if(k==="atr")return "Atrasadas";if(k===t)return "Hoje";if(k===am)return "Amanhã";const d=new Date(+k.slice(0,4),+k.slice(5,7)-1,+k.slice(8,10));
     return DIAS[d.getDay()].slice(0,3).replace(/^./,c=>c.toUpperCase())+", "+k.slice(8,10)+"/"+k.slice(5,7);};
   return [...grupos.entries()].map(([k,arr])=>{const tot=arr.reduce((s,l)=>s+(Number(l.valor)||0)*(isIn(l)?1:-1),0);
-    return `<div class="dayh ${k==="atr"?"atr":""}"><span>${nome(k)}</span><span class="tot">${tot<0?"− ":"+ "}${money(Math.abs(tot))}</span></div>`+arr.map(l=>itemHTML(l,true,false)).join("");}).join("");
+    return `<div class="dayh ${k==="atr"?"atr":""}"><span>${nome(k)}</span><span class="tot">${tot<0?"− ":"+ "}${money(Math.abs(tot))}</span></div>`+arr.map(l=>l.fat?faturaHTML(l):itemHTML(l,true,false)).join("");}).join("");
+}
+
+/* ---------- fatura do cartão como uma linha só ---------- */
+function vencFixa(f,y,m){const d=dateFor(y,m,f.dia);return f.cartao?(faturaVenc(f.cartao,d)||d):d;}
+function comFaturas(ls){
+  const out=[],m=new Map();
+  ls.forEach(l=>{if(l.cartao&&!isIn(l)&&!l.pago){const k=l.cartao+"|"+l.venc;let f=m.get(k);
+      if(!f){f={fat:true,id:"fat:"+k,cartao:l.cartao,venc:l.venc,its:[],valor:0};m.set(k,f);out.push(f);}
+      f.its.push(l);f.valor+=Number(l.valor)||0;}
+    else out.push(l);});
+  return out;
+}
+function faturaHTML(f){
+  const s=status({venc:f.venc}),n=f.its.length;
+  return `<div class="item fat st-${s.k}" data-act="verfat" data-card="${esc(f.cartao)}" data-venc="${f.venc}" role="button" tabindex="0">
+    <div class="ic" aria-hidden="true"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="5.5" width="18" height="13" rx="2.5"/><path d="M3 10h18M7 15h3"/></svg></div>
+    <div class="who"><b>Fatura ${esc(f.cartao)}</b><span><span class="cat1">${n} compra${n>1?"s":""} no cartão</span></span></div>
+    <div class="st"><i class="dot"></i>${s.txt}</div>
+    <div class="v num">− ${money(f.valor)}</div>
+    <div class="act">${S.canWrite?`<button class="btn pay small" data-act="payfat2" data-card="${esc(f.cartao)}" data-venc="${f.venc}" aria-label="Paguei a fatura" title="Paguei a fatura">${CHECK}<span class="pt">Paguei</span></button>`:""}</div></div>`;
+}
+function openFatura(card,venc){
+  const its=live().filter(l=>l.cartao===card&&!isIn(l)&&l.venc===venc).sort((a,b)=>(b.valor||0)-(a.valor||0));if(!its.length)return;
+  const ab=its.filter(l=>!l.pago),tot=its.reduce((s,l)=>s+(Number(l.valor)||0),0);
+  modal(hd("Fatura "+esc(card))+`<div class="fat-tot"><span class="muted">Vence em ${br(venc)}${ab.length<its.length?" · "+(its.length-ab.length)+" já paga(s)":""}</span><b>${money(tot)}</b></div>
+    <div class="panel list fat-l">${its.map(l=>itemHTML(l,false,false)).join("")}</div>
+    <p class="hint" style="margin:0">Toque numa compra para editar. Para mudar em qual fatura uma compra cai, altere a data da compra ou o vencimento dela.</p>
+    <div class="actions"><button class="btn" data-close>Fechar</button>${S.canWrite&&ab.length?`<button class="btn primary" id="fatPay">${CHECK}Paguei a fatura</button>`:""}</div>`,
+  (sh,close)=>{sh.querySelector(".fat-l").addEventListener("click",e=>{const it=e.target.closest('[data-act="edit"]');if(it){close();openEdit(it.dataset.id);}});
+    const b=sh.querySelector("#fatPay");if(b)b.onclick=()=>{close();openPayFatura(card,venc);};});
+}
+
+/* ---------- conta lançada duas vezes ---------- */
+const parecido=(a,b)=>{a=normTxt(a);b=normTxt(b);if(!a||!b)return false;if(a===b||a.includes(b)||b.includes(a))return true;
+  const w=x=>x.split(/[^a-z0-9]+/).filter(t=>t.length>=4),A=w(a);return w(b).some(t=>A.includes(t));};
+function repetidas(){
+  const ok=new Set(cfg().dupOk||[]),t=Date.parse(today()),todos=live(),out=[],usados=new Set(),D=864e5;
+  const fx=todos.filter(l=>l.origem&&l.origem.t==="fixa"&&Math.abs(Date.parse(l.venc)-t)<75*D);
+  const cand=[];
+  for(const a of fx)for(const o of todos){if(o.id===a.id||(o.origem&&o.origem.t==="fixa"&&o.origem.fixa===a.origem.fixa)||isTr(o)||isIn(o)!==isIn(a))continue;
+    const dd=Math.abs(Date.parse(o.venc)-Date.parse(a.venc));
+    if(Math.abs((Number(o.valor)||0)-(Number(a.valor)||0))<0.01&&dd<=40*D&&parecido(o.credor,a.credor)&&!ok.has(a.id+"|"+o.id))cand.push({a,b:o,dd});}
+  cand.sort((x,y)=>x.dd-y.dd||x.a.venc.localeCompare(y.a.venc));
+  for(const c of cand){if(usados.has(c.a.id)||usados.has(c.b.id))continue;usados.add(c.a.id);usados.add(c.b.id);out.push({a:c.a,b:c.b});}
+  return out.sort((x,y)=>y.a.venc.localeCompare(x.a.venc));
+}
+const comoOutra=b=>b.cartao?"compra no cartão "+esc(b.cartao)+" (fatura "+br(b.venc).slice(0,5)+")":(b.origem&&b.origem.t==="fixa"?"outra recorrente":"conta avulsa")+" (vence "+br(b.venc).slice(0,5)+")";
+function avisoRepetidas(){
+  if(!S.canWrite)return "";const r=repetidas();if(!r.length)return "";
+  const txt=r.length===1?`<b>${esc(r[0].a.credor)}</b> parece estar lançada duas vezes: como recorrente (vence ${br(r[0].a.venc).slice(0,5)}) e como ${comoOutra(r[0].b)}.`
+    :`<b>${r.length} contas</b> parecem estar lançadas duas vezes, como recorrente e como outro lançamento com o mesmo valor.`;
+  return `<div class="alert caixa" role="status"><svg class="i" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg><span>${txt}</span><button class="link" data-act="verdup">Resolver</button></div>`;
+}
+async function passarParaCartao(fid,card){
+  const f=S.F.get(fid);if(!f)return;const c=(cfg().cartoes||[]).find(x=>x.nome===card)||{};
+  const nf={...f,cartao:card,forma:"Cartão de Crédito",banco:c.banco||f.banco||""};
+  S.F.set(fid,nf);await S.db.doc("fixas/"+fid).set(nf);
+  const cur=ymOf(today());
+  for(const[i,o]of [...S.L.entries()].filter(([,o])=>o.origem&&o.origem.t==="fixa"&&o.origem.fixa===fid&&!o.pago&&o.origem.mes>=cur)){
+    const[yy,mm]=o.origem.mes.split("-").map(Number);await S.db.doc("lancamentos/"+i).update({venc:vencFixa(nf,yy,mm),cartao:card,forma:nf.forma,banco:nf.banco});}
+}
+function openRepetidas(){
+  const desenha=()=>{const r=repetidas();if(!r.length)return `<div class="empty"><b>Tudo certo.</b>Não há mais contas lançadas duas vezes.</div>`;
+    return r.map(({a,b},i)=>{const f=S.F.get(a.origem.fixa)||{};
+      return `<div class="dup" data-i="${i}"><b>${esc(a.credor)} · ${money(a.valor)}</b>
+        <div class="dup-l"><span>1. Recorrente, vence ${br(a.venc)}${f.cartao?" no cartão "+esc(f.cartao):""}</span><span>2. ${comoOutra(b).replace(/^./,c=>c.toUpperCase())}${b.credor!==a.credor?", lançada como "+esc(b.credor):""}</span></div>
+        <div class="actions">${b.cartao&&!f.cartao?`<button class="btn primary small" data-dup="cartao">Manter a recorrente, cobrada no ${esc(b.cartao)}</button>`:""}
+          <button class="btn small" data-dup="fixa">Manter só a 1</button><button class="btn small" data-dup="outra">Manter só a 2</button><button class="btn ghost small" data-dup="ok">Não é repetida</button></div></div>`;}).join("");};
+  modal(hd("Contas lançadas duas vezes")+`<p class="muted" style="margin:0;font-size:13.5px">Encontrei recorrentes com outro lançamento de mesmo valor e nome parecido, perto da mesma data. Escolha qual fica. O que sair vai para a lixeira, dá para desfazer.</p>
+    <div id="dupBox" style="display:grid;gap:10px">${desenha()}</div><div class="actions"><button class="btn" data-close>Fechar</button></div>`,
+  (sh,close)=>{const box=sh.querySelector("#dupBox");
+    box.addEventListener("click",async e=>{const bt=e.target.closest("[data-dup]");if(!bt)return;const i=+bt.closest(".dup").dataset.i,par=repetidas()[i];if(!par)return;
+      const{a,b}=par,acao=bt.dataset.dup;box.querySelectorAll("button").forEach(x=>x.disabled=true);
+      try{
+        if(acao==="cartao"){await passarParaCartao(a.origem.fixa,b.cartao);await S.db.doc("lancamentos/"+b.id).delete();toast("Pronto: a recorrente agora vai para a fatura do "+b.cartao);}
+        else if(acao==="fixa"){await S.db.doc("lancamentos/"+b.id).delete();toast("Lançamento repetido apagado. Está na lixeira.");}
+        else if(acao==="outra"){await S.db.doc("lancamentos/"+a.id).update({excluido:true});toast("Este mês da recorrente foi tirado");}
+        else{await saveConfig({dupOk:[...(cfg().dupOk||[]),a.id+"|"+b.id].slice(-200)});toast("Certo, não aviso mais sobre essas duas");}
+      }catch(x){toast(writeErr(x));}
+      box.innerHTML=desenha();render();});});
 }
 
 /* ---------- eventos da tela ---------- */
@@ -2934,13 +3027,16 @@ view.addEventListener("click",e=>{
   else if(act==="aplregras")aplicarRegras();
   else if(act==="addcentro")$("#centros").insertAdjacentHTML("beforeend",centroRow(""));
   else if(act==="payfat")openPayFatura(a.dataset.card);
+  else if(act==="payfat2")openPayFatura(a.dataset.card,a.dataset.venc);
+  else if(act==="verfat")openFatura(a.dataset.card,a.dataset.venc);
+  else if(act==="verdup")openRepetidas();
   else if(act==="novacat")openCategoria(null);
   else if(act==="addplano")$("#planos").insertAdjacentHTML("beforeend",planoRow({nome:"",tipo:"Saída"}));
   else if(act==="delrow")a.closest(".rowline").remove();
   else if(act==="savecfg")saveCfg();
   else if(act==="export")exportXlsx();
 });
-view.addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target.matches(".item")){openEdit(e.target.dataset.id);}});
+view.addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target.matches(".item")){if(e.target.dataset.card)openFatura(e.target.dataset.card,e.target.dataset.venc);else openEdit(e.target.dataset.id);}});
 view.addEventListener("change",e=>{const t=e.target,I=S.imp;
   if(t.id==="movBy"){S.mov.by=t.value;S.mov.open=null;render();return;}
   if(t.id==="imDest"){I.dest=t.value;I.fat=null;render(true);return;}
@@ -3311,7 +3407,7 @@ function openFixa(fid){
       try{
         S.F.set(fid,nf);await S.db.doc("fixas/"+fid).set(nf);
         for(const[i,o]of futuras()){const[yy,mm]=o.origem.mes.split("-").map(Number);
-          const up={venc:dateFor(yy,mm,dia),valor:r2(val),plano,tipo:tipoDe(plano),credor:cred,forma:nf.forma,banco:nf.banco,centro:nf.centro,cartao:nf.cartao};
+          const up={venc:vencFixa({...nf,dia},yy,mm),valor:r2(val),plano,tipo:tipoDe(plano),credor:cred,forma:nf.forma,banco:nf.banco,centro:nf.centro,cartao:nf.cartao};
           if(mudouAtiva)up.excluido=!ativa;
           await S.db.doc("lancamentos/"+i).update(up);}
         toast("Conta fixa atualizada");close();
@@ -3810,12 +3906,16 @@ async function ensureFixas(){
       while(ymKey(y,m)<=hKey&&guard++<60){
         const k=ymKey(y,m),id="fx-"+fid+"-"+k;
         if(!S.L.has(id)){
-          await S.db.doc("lancamentos/"+id).set({venc:dateFor(y,m,f.dia),credor:f.credor,plano:f.plano,tipo:tipoDe(f.plano),valor:f.valor,forma:f.forma||"",banco:f.banco||"",centro:f.centro||"",cartao:f.cartao||"",obs:f.obs||"",pago:null,origem:{t:"fixa",fixa:fid,mes:k},criado:new Date().toISOString()});
-          S.L.set(id,{venc:dateFor(y,m,f.dia),credor:f.credor,plano:f.plano,tipo:tipoDe(f.plano),valor:f.valor,pago:null,origem:{t:"fixa",fixa:fid,mes:k}});
+          await S.db.doc("lancamentos/"+id).set({venc:vencFixa(f,y,m),credor:f.credor,plano:f.plano,tipo:tipoDe(f.plano),valor:f.valor,forma:f.forma||"",banco:f.banco||"",centro:f.centro||"",cartao:f.cartao||"",obs:f.obs||"",pago:null,origem:{t:"fixa",fixa:fid,mes:k},criado:new Date().toISOString()});
+          S.L.set(id,{venc:vencFixa(f,y,m),credor:f.credor,plano:f.plano,tipo:tipoDe(f.plano),valor:f.valor,pago:null,origem:{t:"fixa",fixa:fid,mes:k}});
         }
         [y,m]=addYM(y,m,1);
       }
     }
+    // meses já lançados de uma recorrente que passou a ser cobrada no cartão vão para a fatura certa
+    for(const[id,l]of S.L){if(!l.origem||l.origem.t!=="fixa"||l.pago||l.excluido||!l.origem.mes)continue;const f=S.F.get(l.origem.fixa);if(!f||!f.cartao)continue;
+      const[yy,mm]=l.origem.mes.split("-").map(Number),orig=dateFor(yy,mm,f.dia),nv=vencFixa(f,yy,mm);
+      if(l.venc===orig&&nv!==orig){await S.db.doc("lancamentos/"+id).update({venc:nv,cartao:f.cartao});l.venc=nv;l.cartao=f.cartao;}}
   }catch(x){console.warn("fixas",x);}
   genBusy=false;S.sistema=false;if(genAgain){genAgain=false;ensureFixas();}
 }
