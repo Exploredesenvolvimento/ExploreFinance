@@ -309,7 +309,7 @@ function avisosHTML(){
     desligado: `<button class="btn" data-push="ligar"><svg class="i" viewBox="0 0 24 24"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/></svg>Ligar avisos neste aparelho</button>`,
     ligado: `<p style="margin:0 0 10px;font-size:14px"><b>Ligados</b> neste aparelho para ${esc(FIN.empresa.nome)}.</p><button class="btn small" data-push="desligar">Desligar</button>`
   }[String(FIN._push)];
-  return `<div class="set" id="setAvisos"><div><h3>Avisos no celular</h3><p>Todo dia, às 8h, o Finance avisa quando há contas vencendo hoje ou amanhã. Às segundas, lembra também das atrasadas. Vale para este aparelho e para este espaço.</p></div><div id="avisosBox">${corpo || ""}</div></div>`;
+  return `<div class="set" id="setAvisos"><div><h3>Avisos no celular</h3><p>Às 8h, o Finance avisa quando há contas vencendo hoje ou amanhã, quando o saldo de um banco vai ficar negativo nos próximos dias e quando uma categoria passa muito da média. Aos domingos, manda o resumo da semana. Vale para este aparelho e para este espaço.</p></div><div id="avisosBox">${corpo || ""}</div></div>`;
 }
 document.addEventListener("click", async ev => {
   const b = ev.target.closest("[data-push]"); if (!b) return;
