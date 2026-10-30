@@ -50,7 +50,8 @@ window.claude = { use: async n => n === "db" ? dbReady : n === "user" ? userShim
 
 /* ---------- tela cheia de login / empresa ---------- */
 const root = document.createElement("div"); root.id = "authRoot"; document.body.appendChild(root);
-function screen(inner){ root.innerHTML = `<div class="auth"><div class="auth-card"><div class="auth-brand"><img class="auth-ic" src="icons/icon-192.png" alt="" width="44" height="44"><div><b>Finance</b><small>Gestão de finanças</small></div></div>${inner}</div></div>`; root.hidden = false; const f = root.querySelector("input"); f && f.focus(); }
+const LADO = `<aside class="auth-side"><img src="icons/icon-512.png" alt="" width="200" height="200"><div><h2>Finance</h2><p>Gestão de finanças</p></div></aside>`;
+function screen(inner){ root.innerHTML = `<div class="auth">${LADO}<div class="auth-main"><div class="auth-card"><div class="auth-brand"><img class="auth-ic" src="icons/icon-192.png" alt="" width="104" height="104"><div><b>Finance</b><small>Gestão de finanças</small></div></div>${inner}</div></div></div>`; root.hidden = false; const f = root.querySelector("input"); f && f.focus(); }
 function msg(t, kind){ const m = root.querySelector(".auth-msg"); if(m){ m.textContent = t; m.className = "auth-msg " + (kind || ""); m.hidden = !t; } }
 function busy(btn, on, txt){ if(!btn) return; btn.disabled = on; if(txt) btn.textContent = txt; }
 const traduz = e => {
@@ -59,6 +60,7 @@ const traduz = e => {
   if (/Email not confirmed/i.test(m)) return "Confirme seu e-mail primeiro. Procure a mensagem do Supabase na caixa de entrada ou no spam.";
   if (/already registered|already been registered/i.test(m)) return "Este e-mail já tem conta. Use Entrar ou Esqueci minha senha.";
   if (/at least 6|Password should/i.test(m)) return "A senha precisa ter pelo menos 6 caracteres.";
+  if (/provider is not enabled|Unsupported provider/i.test(m)) return "O acesso com o Google ainda não foi ligado neste app.";
   if (/rate limit|security purposes|too many/i.test(m)) return "Muitas tentativas seguidas. Espere alguns minutos e tente de novo.";
   if (/valid email|invalid email|Unable to validate email/i.test(m)) return "Confira o e-mail digitado.";
   if (/limite_empresas/.test(m)) return "Você chegou ao limite de 10 empresas.";
@@ -67,7 +69,7 @@ const traduz = e => {
 };
 
 function telaEntrar(modo){
-  modo = modo || "entrar";
+  modo = modo || "entrar"; tirarTrava();
   const t = { entrar: ["Entrar", "Entrar"], criar: ["Criar conta", "Criar minha conta"], esqueci: ["Recuperar senha", "Enviar link"] }[modo];
   screen(`<h2 class="auth-h">${t[0]}</h2>
     <form id="authForm" class="auth-form" novalidate>
@@ -76,10 +78,17 @@ function telaEntrar(modo){
       <div class="auth-msg" hidden></div>
       <button class="btn primary auth-go" type="submit">${t[1]}</button>
     </form>
+    ${modo !== "esqueci" ? `<div class="auth-google" hidden><div class="auth-ou"><span>ou</span></div><button type="button" class="btn auth-g" data-google>Continuar com o Google</button></div>` : ""}
     <div class="auth-links">
       ${modo !== "entrar" ? `<button data-m="entrar">Já tenho conta</button>` : `<button data-m="criar">Criar conta</button><button data-m="esqueci">Esqueci minha senha</button>`}
     </div>`);
   root.querySelectorAll("[data-m]").forEach(b => b.onclick = () => telaEntrar(b.dataset.m));
+  const gb = root.querySelector(".auth-google");
+  if (gb) googleAtivo().then(on => { if (on && gb.isConnected) gb.hidden = false; });
+  const gbt = root.querySelector("[data-google]");
+  if (gbt) gbt.onclick = async () => { gbt.disabled = true; gbt.textContent = "Abrindo o Google...";
+    const { error } = await FIN.sb.auth.signInWithOAuth({ provider: "google", options: { redirectTo: location.origin + location.pathname } });
+    if (error) { gbt.disabled = false; gbt.textContent = "Continuar com o Google"; msg(traduz(error), "err"); } };
   root.querySelector("#authForm").onsubmit = async ev => {
     ev.preventDefault();
     const email = root.querySelector("#au_email").value.trim().toLowerCase(), s = root.querySelector("#au_senha"), senha = s ? s.value : "";
@@ -101,6 +110,12 @@ function telaEntrar(modo){
       }
     } catch (e) { msg(traduz(e), "err"); busy(btn, false, t[1]); }
   };
+}
+let _google = null;
+function googleAtivo(){
+  if (_google === null) _google = fetch(CFG.url.replace(/\/$/, "") + "/auth/v1/settings", { headers: { apikey: CFG.key } })
+    .then(r => r.ok ? r.json() : {}).then(j => !!(j && j.external && j.external.google)).catch(() => false);
+  return _google;
 }
 function telaNovaSenha(){
   screen(`<h2 class="auth-h">Crie uma senha nova</h2><form id="pwForm" class="auth-form" novalidate>
@@ -144,33 +159,181 @@ function telaCriarEmpresa(primeira){
   };
 }
 FIN.consumirModo = () => { if (!FIN.empresa) return null; const k = "fin.modo." + FIN.empresa.id, m = LS.get(k); LS.del(k); return m; };
-async function sairConta(){ await FIN.sb.auth.signOut(); LS.del("fin.empresa"); location.reload(); }
+function tirarTrava(){ LS.del("fin.pin"); const pl = document.getElementById("pinLock"); if (pl) { pl.remove(); document.body.classList.remove("travado"); } }
+async function sairConta(){ LS.del("fin.pin"); await FIN.sb.auth.signOut(); LS.del("fin.empresa"); location.reload(); }
 
 /* ---------- conta, empresas e instalação ---------- */
 function abrirConta(){
   const ios = /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
   const instalado = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
-  const m = document.getElementById("modalRoot");
+  const m = document.getElementById("modalRoot"), u = FIN.user, nome = FIN.nome || "";
+  const ini = (nome || u.email).replace(/[^A-Za-zÀ-ÿ0-9 ]/g, " ").trim().split(/\s+/).slice(0, 2).map(w => w[0]).join("").toUpperCase() || "?";
   m.innerHTML = `<div class="overlay"><div class="sheet" role="dialog" aria-modal="true">
     <div class="hd"><h3>Sua conta</h3><button class="btn ghost small" data-x aria-label="Fechar">&times;</button></div>
-    <p style="margin:0;color:var(--muted);font-size:14px">Entrou como <b style="color:var(--fg)">${esc(FIN.user.email)}</b></p>
-    <div><h2 style="margin-bottom:8px">Empresas</h2><div class="rows">${FIN.empresas.map(e => `<button class="emp-row ${e.id === FIN.empresa.id ? "on" : ""}" data-emp="${e.id}"><b>${esc(e.nome)}</b><span>${PAPEL[e.papel]}</span></button>`).join("")}</div>
+    <div class="conta-perfil"><span class="conta-av">${esc(ini)}</span><div style="min-width:0"><b>${esc(nome || "Sem nome")}</b><span>${esc(u.email)}</span></div></div>
+    <div class="rows conta-op">
+      <button class="conta-item" data-c="nome"><b>Seu nome</b><span>${nome ? "Trocar" : "Adicionar"}</span></button>
+      <button class="conta-item" data-c="email"><b>Trocar e-mail</b><span>Precisa confirmar</span></button>
+      <button class="conta-item" data-c="senha"><b>Trocar senha</b><span>Pede a senha atual</span></button>
+    </div>
+    <div class="conta-form" id="contaForm" hidden></div>
+    <div><h2 style="margin-bottom:8px">Seus espaços</h2><div class="rows">${FIN.empresas.map(e => `<button class="emp-row ${e.id === FIN.empresa.id ? "on" : ""}" data-emp="${e.id}"><b>${esc(e.nome)}</b><span>${PAPEL[e.papel]}</span></button>`).join("")}</div>
       <div class="actions" style="justify-content:flex-start;margin-top:10px"><button class="btn small" data-nova>+ Novo espaço</button></div></div>
     ${instalado ? "" : `<div class="note"><b>Instalar no celular ou computador</b><br>${FIN.installEvt ? `Coloque o Finance na tela inicial, com ícone próprio.<div style="margin-top:8px"><button class="btn primary small" data-inst>Instalar o app</button></div>` : ios ? "No iPhone: toque no botão Compartilhar do Safari (o quadrado com a seta) e depois em <b>Adicionar à Tela de Início</b>." : "No Chrome do Android: menu de três pontinhos e <b>Instalar app</b> ou <b>Adicionar à tela inicial</b>."}</div>`}
-    <div class="actions"><button class="btn danger" data-sair>Sair da conta</button></div></div></div>`;
+    <div class="actions"><button class="btn danger" data-sair>Sair da conta</button></div>
+    <p class="conta-del"><button type="button" data-c="excluir">Excluir minha conta</button></p></div></div>`;
   const close = () => { m.innerHTML = ""; };
+  const box = m.querySelector("#contaForm");
+  const cmsg = (t, k) => { const n = box.querySelector(".auth-msg"); if (n) { n.textContent = t; n.className = "auth-msg " + (k || ""); n.hidden = !t; } };
+  const campo = (id, rot, tipo, extra) => `<label class="f full">${rot}<input id="${id}" type="${tipo}" ${extra || ""}></label>`;
+  const forms = {
+    nome: () => `<h4>Seu nome</h4><div class="form">${campo("cf_nome", "Como quer ser chamado", "text", `maxlength="60" autocomplete="name" value="${esc(nome)}"`)}</div>`,
+    email: () => `<h4>Trocar e-mail</h4><p class="cf-p">Hoje: <b>${esc(u.email)}</b>. Vamos mandar um link de confirmação. O e-mail só muda depois que você confirmar.</p><div class="form">${campo("cf_email", "E-mail novo", "email", 'autocomplete="email" inputmode="email"')}</div>`,
+    senha: () => `<h4>Trocar senha</h4><div class="form">${campo("cf_atual", "Senha atual", "password", 'autocomplete="current-password"')}${campo("cf_s1", "Senha nova", "password", 'autocomplete="new-password" minlength="6"')}${campo("cf_s2", "Repita a senha nova", "password", 'autocomplete="new-password" minlength="6"')}</div>`,
+    excluir: () => { const meus = FIN.empresas.filter(e => e.papel === "dono"), outros = FIN.empresas.filter(e => e.papel !== "dono");
+      return `<h4 class="danger-t">Excluir minha conta</h4><p class="cf-p">Isso não tem volta.</p>
+      ${meus.length ? `<p class="cf-p">Estes espaços são seus e serão <b>apagados com todos os lançamentos e anexos</b>, também para quem tem acesso a eles:</p><ul class="cf-ul">${meus.map(e => `<li>${esc(e.nome)}</li>`).join("")}</ul>` : ""}
+      ${outros.length ? `<p class="cf-p">Você também sai de: ${outros.map(e => esc(e.nome)).join(", ")}. Esses espaços continuam existindo para os donos.</p>` : ""}
+      <p class="cf-p">Se quiser guardar os dados, baixe antes a cópia em Excel, em Ajustes.</p>
+      <div class="form">${campo("cf_senha", "Sua senha", "password", 'autocomplete="current-password"')}${campo("cf_conf", "Digite EXCLUIR para confirmar", "text", 'autocomplete="off" autocapitalize="characters"')}</div>`; }
+  };
+  const abrir = tipo => {
+    box.hidden = false; box.dataset.tipo = tipo;
+    box.innerHTML = forms[tipo]() + `<div class="auth-msg" hidden></div><div class="actions"><button class="btn" data-cf="cancelar">Cancelar</button><button class="btn ${tipo === "excluir" ? "danger" : "primary"}" data-cf="ok">${tipo === "excluir" ? "Excluir para sempre" : tipo === "email" ? "Enviar link" : "Salvar"}</button></div>`;
+    m.querySelectorAll("[data-c]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.c === tipo)));
+    const f = box.querySelector("input"); if (f) f.focus();
+    box.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  };
+  const val = id => (box.querySelector("#" + id) || {}).value || "";
+  const confere = async senha => { const { error } = await FIN.sb.auth.signInWithPassword({ email: u.email, password: senha }); return !error; };
+  async function salvar(btn){
+    const tipo = box.dataset.tipo, txt = btn.textContent; btn.disabled = true; btn.textContent = "Aguarde..."; cmsg("");
+    const fim = (t, k) => { btn.disabled = false; btn.textContent = txt; if (t) cmsg(t, k); };
+    try {
+      if (tipo === "nome") {
+        const n = val("cf_nome").trim().slice(0, 60);
+        const { data, error } = await FIN.sb.auth.updateUser({ data: { nome: n } }); if (error) throw error;
+        FIN.user = data.user || FIN.user; FIN.nome = n; aviso(n ? "Nome salvo" : "Nome removido");
+        if (window.__finRender) window.__finRender(); return abrirConta();
+      }
+      if (tipo === "email") {
+        const e = val("cf_email").trim().toLowerCase();
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) return fim("Confira o e-mail digitado.", "err");
+        if (e === u.email) return fim("Esse já é o seu e-mail.", "err");
+        const { error } = await FIN.sb.auth.updateUser({ email: e }, { emailRedirectTo: location.origin + location.pathname }); if (error) throw error;
+        box.innerHTML = `<h4>Confira sua caixa de entrada</h4><p class="cf-p">Mandamos o link para <b>${esc(e)}</b>. Por segurança, pode chegar um aviso também em <b>${esc(u.email)}</b>. Confirme pelos links e o e-mail muda na hora.</p><p class="cf-p">Não chegou? Olhe o spam. Pode levar alguns minutos.</p><div class="actions"><button class="btn" data-cf="cancelar">Fechar</button></div>`; return;
+      }
+      if (tipo === "senha") {
+        const a = val("cf_atual"), s1 = val("cf_s1"), s2 = val("cf_s2");
+        if (!a) return fim("Digite a senha atual.", "err");
+        if (s1.length < 6) return fim("A senha nova precisa ter pelo menos 6 caracteres.", "err");
+        if (s1 !== s2) return fim("As duas senhas novas não são iguais.", "err");
+        if (s1 === a) return fim("A senha nova é igual à atual.", "err");
+        if (!(await confere(a))) return fim("A senha atual não confere.", "err");
+        const { error } = await FIN.sb.auth.updateUser({ password: s1 }); if (error) throw error;
+        box.hidden = true; box.innerHTML = ""; m.querySelectorAll("[data-c]").forEach(b => b.removeAttribute("aria-pressed")); aviso("Senha trocada"); return;
+      }
+      if (tipo === "excluir") {
+        if (val("cf_conf").trim().toUpperCase() !== "EXCLUIR") return fim("Digite EXCLUIR, em letras maiúsculas, para confirmar.", "err");
+        if (!(await confere(val("cf_senha")))) return fim("A senha não confere.", "err");
+        btn.textContent = "Apagando...";
+        for (const e of FIN.empresas.filter(x => x.papel === "dono")) {
+          for (let i = 0; i < 50; i++) {
+            const { data, error } = await FIN.sb.storage.from("anexos").list(e.id, { limit: 100 });
+            if (error || !data || !data.length) break;
+            const r = await FIN.sb.storage.from("anexos").remove(data.map(f => e.id + "/" + f.name));
+            if (r.error || data.length < 100) break;
+          }
+        }
+        const { error } = await FIN.sb.rpc("excluir_minha_conta"); if (error) throw error;
+        Object.keys(localStorage).filter(k => /^fin\./.test(k)).forEach(k => LS.del(k));
+        FIN.user = null; try { await FIN.sb.auth.signOut({ scope: "local" }); } catch (_) {}
+        close(); screen(`<h2 class="auth-h">Conta excluída</h2><p class="auth-p">Sua conta e os espaços que eram seus foram apagados. Obrigado por ter usado o Finance.</p><div class="auth-links"><button data-volta>Voltar ao início</button></div>`);
+        root.querySelector("[data-volta]").onclick = () => location.reload(); return;
+      }
+    } catch (e) { fim(traduz(e), "err"); }
+  }
   m.querySelector(".overlay").addEventListener("click", ev => {
     if (ev.target.classList.contains("overlay") || ev.target.closest("[data-x]")) return close();
+    const c = ev.target.closest("[data-c]"); if (c) { abrir(c.dataset.c); return; }
+    const cf = ev.target.closest("[data-cf]"); if (cf) { if (cf.dataset.cf === "ok") salvar(cf); else { box.hidden = true; box.innerHTML = ""; m.querySelectorAll("[data-c]").forEach(b => b.removeAttribute("aria-pressed")); } return; }
     const emp = ev.target.closest("[data-emp]"); if (emp) { if (emp.dataset.emp !== FIN.empresa.id) { LS.set("fin.empresa", emp.dataset.emp); location.reload(); } else close(); return; }
     if (ev.target.closest("[data-nova]")) { close(); telaCriarEmpresa(false); return; }
     if (ev.target.closest("[data-sair]")) { sairConta(); return; }
     if (ev.target.closest("[data-inst]") && FIN.installEvt) { FIN.installEvt.prompt(); FIN.installEvt.userChoice.finally(() => { FIN.installEvt = null; close(); }); }
   });
+  m.querySelector(".overlay").addEventListener("keydown", ev => { if (ev.key === "Enter" && ev.target.matches("#contaForm input")) { ev.preventDefault(); const ok = box.querySelector('[data-cf="ok"]'); if (ok && !ok.disabled) salvar(ok); } if (ev.key === "Escape") close(); });
 }
 window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); FIN.installEvt = e; });
 
+/* ---------- avisos no celular (notificações) ---------- */
+const VAPID_PUB = "BDWYoW0z46s6HyDCfx4vNQbuA6T0-AiGd78KdbsMf8ant3Wne6BC7KkzfENGmDOIMcu29a62e83iANDWoZsG2N8";
+const b64u = t => { const p = "=".repeat((4 - t.length % 4) % 4), r = atob((t + p).replace(/-/g, "+").replace(/_/g, "/")); return Uint8Array.from(r, c => c.charCodeAt(0)); };
+const ehIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent);
+const instaladoApp = () => matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+FIN.push = {
+  suportado(){ return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window; },
+  async inscricao(){ const reg = await navigator.serviceWorker.getRegistration(); return reg ? reg.pushManager.getSubscription() : null; },
+  async estado(){
+    if (!this.suportado()) return ehIOS() && !instaladoApp() ? "ios" : "sem";
+    if (Notification.permission === "denied") return "negado";
+    const sub = await this.inscricao(); if (!sub) return "desligado";
+    const { data } = await FIN.sb.from("push_inscricoes").select("id").eq("endpoint", sub.endpoint).eq("empresa_id", FIN.empresa.id);
+    return data && data.length ? "ligado" : "desligado";
+  },
+  async ligar(){
+    const p = await Notification.requestPermission(); if (p !== "granted") throw new Error("negado");
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64u(VAPID_PUB) });
+    const j = sub.toJSON();
+    const { data } = await FIN.sb.from("push_inscricoes").select("id").eq("endpoint", j.endpoint).eq("empresa_id", FIN.empresa.id);
+    if (!data || !data.length) { const { error } = await FIN.sb.from("push_inscricoes").insert({ empresa_id: FIN.empresa.id, endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth }); if (error) throw error; }
+    try { reg.showNotification("Avisos ligados", { body: "Todo dia de manhã você recebe aqui as contas de " + FIN.empresa.nome + " que vencem hoje e amanhã.", icon: "icons/icon-192.png", tag: "finance-teste" }); } catch (_) {}
+  },
+  async desligar(){
+    const sub = await this.inscricao(); if (!sub) return;
+    await FIN.sb.from("push_inscricoes").delete().eq("endpoint", sub.endpoint).eq("empresa_id", FIN.empresa.id);
+    const { data } = await FIN.sb.from("push_inscricoes").select("id").eq("endpoint", sub.endpoint);
+    if (!data || !data.length) { try { await sub.unsubscribe(); } catch (_) {} }
+  }
+};
+function avisosHTML(){
+  const st = FIN._push;
+  if (st === undefined) { FIN._push = null; FIN.push.estado().then(e => { FIN._push = e; if (window.__finRender && document.getElementById("setAvisos")) window.__finRender(); }).catch(() => { FIN._push = "sem"; }); }
+  const corpo = {
+    null: `<p class="muted" style="margin:0">Verificando...</p>`, undefined: `<p class="muted" style="margin:0">Verificando...</p>`,
+    ios: `<p style="margin:0;font-size:14px">No iPhone, os avisos só funcionam com o app instalado. Toque em <b>Compartilhar</b> no Safari, depois em <b>Adicionar à Tela de Início</b>, abra o Finance pelo ícone e volte aqui.</p>`,
+    sem: `<p style="margin:0;font-size:14px">Este navegador não recebe notificações. No celular, use o Chrome (Android) ou o app instalado na Tela de Início (iPhone).</p>`,
+    negado: `<p style="margin:0;font-size:14px">As notificações estão bloqueadas para este site. Libere nas configurações do navegador (no computador, pelo cadeado ao lado do endereço) e volte aqui.</p>`,
+    desligado: `<button class="btn" data-push="ligar"><svg class="i" viewBox="0 0 24 24"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/></svg>Ligar avisos neste aparelho</button>`,
+    ligado: `<p style="margin:0 0 10px;font-size:14px"><b>Ligados</b> neste aparelho para ${esc(FIN.empresa.nome)}.</p><button class="btn small" data-push="desligar">Desligar</button>`
+  }[String(FIN._push)];
+  return `<div class="set" id="setAvisos"><div><h3>Avisos no celular</h3><p>Todo dia, às 8h, o Finance avisa quando há contas vencendo hoje ou amanhã. Às segundas, lembra também das atrasadas. Vale para este aparelho e para este espaço.</p></div><div id="avisosBox">${corpo || ""}</div></div>`;
+}
+document.addEventListener("click", async ev => {
+  const b = ev.target.closest("[data-push]"); if (!b) return;
+  b.disabled = true; const t = b.textContent; b.textContent = "Aguarde...";
+  try { if (b.dataset.push === "ligar") { await FIN.push.ligar(); aviso("Avisos ligados neste aparelho"); } else { await FIN.push.desligar(); aviso("Avisos desligados"); } }
+  catch (x) { console.warn(x); aviso(x && x.message === "negado" ? "Sem permissão para notificações. Libere no navegador e tente de novo." : "Não foi possível ligar os avisos agora"); }
+  FIN._push = undefined; if (window.__finRender) window.__finRender(); else { b.disabled = false; b.textContent = t; }
+});
+
+/* ---------- pró-labore: lançar no espaço pessoal ---------- */
+FIN.espacosPessoais = async () => {
+  const outros = (FIN.empresas || []).filter(e => e.id !== FIN.empresa.id && e.papel !== "leitor"), r = [];
+  for (const e of outros) {
+    const { data } = await FIN.sb.from("docs").select("data").eq("empresa_id", e.id).eq("path", "config/main");
+    const c = data && data[0] && data[0].data; if (c && c.modo === "pessoal") r.push({ id: e.id, nome: e.nome });
+  }
+  return r;
+};
+FIN.lancarEm = async (emp, path, data) => { const { error } = await FIN.sb.from("docs").upsert({ empresa_id: emp, path, col: path.split("/")[0], data }); if (error) throw error; };
+FIN.apagarEm = async (emp, path) => { const { error } = await FIN.sb.from("docs").delete().eq("empresa_id", emp).eq("path", path); if (error) throw error; };
+
 /* ---------- equipe (aparece na aba Ajustes) ---------- */
-FIN.ajustesHTML = () => {
+FIN.ajustesHTML = () => avisosHTML() + equipeHTML();
+function equipeHTML(){
   const dono = FIN.papel === "dono", t = FIN.team;
   if (!t) { FIN.loadTeam(); return `<div class="set"><div><h3>Empresa e equipe</h3></div><div class="muted">Carregando...</div></div>`; }
   return `<div class="set" id="equipe"><div><h3>Empresa e equipe</h3><p>Quem tem acesso a esta empresa e o que cada pessoa pode fazer.</p></div><div>
@@ -315,7 +478,7 @@ async function iniciar(){
   if (/type=recovery/.test(location.hash)) return; // a tela de senha nova abre pelo evento acima
   const { data: { session } } = await FIN.sb.auth.getSession();
   if (!session) return telaEntrar("entrar");
-  FIN.user = session.user;
+  FIN.user = session.user; FIN.nome = ((session.user.user_metadata || {}).nome || "").trim();
   await FIN.sb.rpc("aceitar_convites");
   const { data: ms, error } = await FIN.sb.from("membros").select("papel, empresas(id,nome)").eq("user_id", FIN.user.id);
   if (error) { screen(`<h2 class="auth-h">Não foi possível abrir</h2><p class="auth-p">${esc(traduz(error))}</p><div class="auth-links"><button onclick="location.reload()">Tentar de novo</button></div>`); return; }

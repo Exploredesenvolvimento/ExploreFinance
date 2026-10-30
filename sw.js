@@ -1,7 +1,7 @@
 /* Service worker do Financeiro: deixa o app instalável e abrindo rápido.
    Os dados NÃO ficam guardados aqui: eles sempre vêm do Supabase. */
-const VERSAO = "fin-1.8.2";
-const BASE = ["./", "./index.html", "./boot.js?v=1.8.2", "./manifest.webmanifest", "./icons/icon-192.png", "./icons/icon-512.png"];
+const VERSAO = "fin-1.13.0";
+const BASE = ["./", "./index.html", "./boot.js?v=1.13.0", "./manifest.webmanifest", "./icons/icon-192.png", "./icons/icon-512.png"];
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(VERSAO).then(c => c.addAll(BASE)).then(() => self.skipWaiting()));
@@ -30,4 +30,21 @@ self.addEventListener("fetch", e => {
       return hit || net;
     }));
   }
+});
+
+// Avisos de vencimento: chegam do servidor uma vez por dia
+self.addEventListener("push", e => {
+  let d = {}; try { d = e.data ? e.data.json() : {}; } catch (_) { d = { title: "Finance", body: e.data ? e.data.text() : "" }; }
+  e.waitUntil(self.registration.showNotification(d.title || "Finance", {
+    body: d.body || "", icon: "icons/icon-192.png", badge: "icons/icon-192.png",
+    tag: d.tag || "finance", renotify: true, data: { url: d.url || "./" }
+  }));
+});
+self.addEventListener("notificationclick", e => {
+  e.notification.close();
+  const url = (e.notification.data && e.notification.data.url) || "./";
+  e.waitUntil(clients.matchAll({ type: "window", includeUncontrolled: true }).then(ws => {
+    for (const w of ws) if ("focus" in w) return w.focus();
+    return clients.openWindow(url);
+  }));
 });
