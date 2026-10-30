@@ -392,9 +392,44 @@ document.addEventListener("click", async ev => {
 });
 
 /* ---------- a ponte com o banco (mesma interface do app) ---------- */
+/* ---------- sem internet: fila de alterações e cópia local ---------- */
+FIN.statusRede = () => {
+  let bar = document.getElementById("redeBar"); const n = FIN.filaN ? FIN.filaN() : 0, off = !navigator.onLine;
+  if (!off && !n) { if (bar) bar.remove(); return; }
+  if (!bar) { bar = document.createElement("div"); bar.id = "redeBar"; bar.setAttribute("role", "status"); document.body.appendChild(bar); }
+  bar.className = off ? "off" : "envia";
+  bar.textContent = off ? "Sem internet. Pode continuar lançando" + (n ? ": " + n + (n > 1 ? " alterações esperando" : " alteração esperando") + " para enviar." : ", o app envia quando a conexão voltar.") : "Enviando " + n + (n > 1 ? " alterações" : " alteração") + " feitas sem internet...";
+};
+window.addEventListener("offline", () => FIN.statusRede());
+window.addEventListener("online", () => { FIN.statusRede(); if (FIN.filaEnviar) FIN.filaEnviar(); });
 function makeDb(sb, emp){
   const cache = new Map(), loaded = new Map(), colSubs = new Map(), docSubs = new Map(); let pending = 0;
   const colOf = p => p.split("/")[0];
+  const FILA_K = "fin.fila." + emp, CACHE_K = "fin.cache." + emp;
+  const filaLer = () => { try { return JSON.parse(LS.get(FILA_K) || "[]"); } catch (_) { return []; } };
+  const filaGravar = f => { if (f.length) LS.set(FILA_K, JSON.stringify(f)); else LS.del(FILA_K); FIN.statusRede(); };
+  FIN.filaN = () => filaLer().length;
+  const semRede = e => !navigator.onLine || /Failed to fetch|NetworkError|network|Load failed|fetch failed/i.test(String(e && (e.message || e)));
+  let guardarT; const guardar = () => { clearTimeout(guardarT); guardarT = setTimeout(() => { try { localStorage.setItem(CACHE_K, JSON.stringify({ cols: [...loaded].filter(([, v]) => v === true).map(([c]) => c), docs: [...cache] })); } catch (_) {} }, 400); };
+  const doCache = col => { try { const c = JSON.parse(localStorage.getItem(CACHE_K) || "null"); if (!c || !c.cols.includes(col)) return false; c.docs.filter(([p]) => colOf(p) === col).forEach(([p, d]) => { if (!cache.has(p)) cache.set(p, d); }); return true; } catch (_) { return false; } };
+  async function executar(op){
+    if (op.t === "set") { const { error } = await sb.from("docs").upsert({ empresa_id: emp, path: op.path, col: colOf(op.path), data: op.body }); if (error) throw error; }
+    else if (op.t === "update") { const { error } = await sb.rpc("doc_merge", { p_empresa: emp, p_path: op.path, p_patch: op.body }); if (error) throw error; }
+    else { const { error } = await sb.from("docs").delete().eq("empresa_id", emp).eq("path", op.path); if (error) throw error; }
+  }
+  let enviando = false;
+  FIN.filaEnviar = async () => {
+    if (enviando || !navigator.onLine) return; let f = filaLer(); if (!f.length) return; enviando = true; FIN.statusRede();
+    try {
+      while (f.length) {
+        const op = f[0];
+        try { await executar(op); }
+        catch (e) { if (semRede(e)) break; console.warn("alteração descartada", op.path, e); }
+        f = f.slice(1); filaGravar(f);
+      }
+    } finally { enviando = false; FIN.statusRede(); }
+    if (!f.length) refresh(true);
+  };
   const err = (code, message) => ({ code, message });
   const mapErr = e => { const m = String(e && e.message || ""), c = e && e.code;
     if (c === "42501" || c === "P0002" || /row-level security|doc_nao_existe|violates check/i.test(m)) return err("invalid_argument", m);
@@ -416,14 +451,17 @@ function makeDb(sb, emp){
     const seen = new Set(all.map(r => r.path));
     for (const [p] of cache) if (colOf(p) === col && !seen.has(p)) { cache.delete(p); changed = true; }
     for (const r of all) { const old = cache.get(r.path); if (!old || JSON.stringify(old) !== JSON.stringify(r.data)) { cache.set(r.path, r.data); changed = true; } }
-    loaded.set(col, true); return changed;
+    loaded.set(col, true); guardar(); return changed;
   }
   async function ensure(col, onErr){ if (loaded.get(col) || loaded.get(col) === 0) return; loaded.set(col, 0);
     try { await load(col); emitCol(col); [...docSubs.keys()].filter(p => colOf(p) === col).forEach(emitDoc); }
-    catch (e) { loaded.delete(col); onErr && onErr(e); } }
+    catch (e) {
+      if (semRede(e) && doCache(col)) { loaded.set(col, true); FIN.semRedeAoAbrir = true; FIN.statusRede(); emitCol(col); [...docSubs.keys()].filter(p => colOf(p) === col).forEach(emitDoc); return; }
+      loaded.delete(col); onErr && onErr(e); } }
   /* Busca todas as coleções antes de avisar o app, e avisa recorrentes e configuração antes dos lançamentos:
      assim o app nunca vê os meses apagados de uma recorrente que, para ele, ainda existe. */
-  async function refresh(){ if (document.hidden || pending > 0) return;
+  async function refresh(forcar){ if ((!forcar && document.hidden) || pending > 0) return;
+    if (filaLer().length) { FIN.filaEnviar(); return; }
     const mudou = [];
     for (const col of [...loaded.keys()].filter(c => loaded.get(c) === true)) { try { if (await load(col)) mudou.push(col); } catch (_) {} }
     mudou.sort((a, b) => (a === "lancamentos") - (b === "lancamentos"))
@@ -439,20 +477,25 @@ function makeDb(sb, emp){
   } catch (_) {}
   function onRow(r){ if (!r || r.empresa_id !== emp || pending > 0) return; const old = cache.get(r.path);
     if (old && JSON.stringify(old) === JSON.stringify(r.data)) return; cache.set(r.path, r.data); emit(r.path); }
-  async function write(path, fn, revert){ pending++; emit(path);
-    try { await fn(); } catch (e) { revert(); throw e; } finally { pending--; emit(path); } }
+  async function write(path, fn, revert, op){ pending++; emit(path);
+    const enfileira = () => { filaGravar([...filaLer(), op]); guardar(); if (navigator.onLine) setTimeout(() => FIN.filaEnviar(), 0); };
+    try {
+      if (!navigator.onLine || filaLer().length) { enfileira(); return; }
+      await fn(); guardar();
+    } catch (e) { if (semRede(e)) { enfileira(); return; } revert(); throw e; }
+    finally { pending--; emit(path); } }
   function docRef(path){
     if (path.split("/").length !== 2) throw new TypeError("caminho inválido: " + path);
     const col = colOf(path);
     return { id: path.split("/")[1], path,
       async get(){ await ensure(col); return snapDoc(path, cache.get(path)); },
       async set(data){ const before = cache.get(path), body = JSON.parse(JSON.stringify(data)); cache.set(path, body);
-        await write(path, async () => { const { error } = await sb.from("docs").upsert({ empresa_id: emp, path, col, data: body }); if (error) throw mapErr(error); }, () => before === undefined ? cache.delete(path) : cache.set(path, before)); },
+        await write(path, async () => { const { error } = await sb.from("docs").upsert({ empresa_id: emp, path, col, data: body }); if (error) throw mapErr(error); }, () => before === undefined ? cache.delete(path) : cache.set(path, before), { t: "set", path, body }); },
       async update(patch){ const before = cache.get(path), body = JSON.parse(JSON.stringify(patch));
         if (before) cache.set(path, { ...before, ...body });
-        await write(path, async () => { const { error } = await sb.rpc("doc_merge", { p_empresa: emp, p_path: path, p_patch: body }); if (error) throw mapErr(error); }, () => before === undefined ? cache.delete(path) : cache.set(path, before)); },
+        await write(path, async () => { const { error } = await sb.rpc("doc_merge", { p_empresa: emp, p_path: path, p_patch: body }); if (error) throw mapErr(error); }, () => before === undefined ? cache.delete(path) : cache.set(path, before), { t: "update", path, body }); },
       async delete(){ const before = cache.get(path); cache.delete(path);
-        await write(path, async () => { const { error } = await sb.from("docs").delete().eq("empresa_id", emp).eq("path", path); if (error) throw mapErr(error); }, () => before !== undefined && cache.set(path, before)); },
+        await write(path, async () => { const { error } = await sb.from("docs").delete().eq("empresa_id", emp).eq("path", path); if (error) throw mapErr(error); }, () => before !== undefined && cache.set(path, before), { t: "delete", path }); },
       onSnapshot(next, onErr){ if (!docSubs.has(path)) docSubs.set(path, new Set()); docSubs.get(path).add(next);
         if (loaded.get(col) === true) setTimeout(() => next(snapDoc(path, cache.get(path))), 0); else ensure(col, onErr);
         return () => docSubs.get(path).delete(next); },
@@ -465,6 +508,7 @@ function makeDb(sb, emp){
       if (loaded.get(col) === true) setTimeout(() => emitCol(col), 0); else ensure(col, onErr);
       return () => colSubs.get(col).delete(next); },
     async get(){ await ensure(col); const docs = [...cache].filter(([p]) => colOf(p) === col).map(([p, d]) => snapDoc(p, d)); return { docs, size: docs.length, empty: !docs.length }; } });
+  setTimeout(() => { FIN.statusRede(); FIN.filaEnviar(); }, 1500);
   return { doc: docRef, collection: colRef };
 }
 
@@ -481,8 +525,11 @@ async function iniciar(){
   FIN.user = session.user; FIN.nome = ((session.user.user_metadata || {}).nome || "").trim();
   await FIN.sb.rpc("aceitar_convites");
   const { data: ms, error } = await FIN.sb.from("membros").select("papel, empresas(id,nome)").eq("user_id", FIN.user.id);
-  if (error) { screen(`<h2 class="auth-h">Não foi possível abrir</h2><p class="auth-p">${esc(traduz(error))}</p><div class="auth-links"><button onclick="location.reload()">Tentar de novo</button></div>`); return; }
-  FIN.empresas = (ms || []).filter(m => m.empresas).map(m => ({ id: m.empresas.id, nome: m.empresas.nome, papel: m.papel })).sort((a, b) => a.nome.localeCompare(b.nome));
+  let lista = ms;
+  if (error && (!navigator.onLine || /Failed to fetch|NetworkError|network/i.test(error.message || ""))) { try { lista = JSON.parse(LS.get("fin.espacos." + FIN.user.id) || "null"); } catch (_) { lista = null; } }
+  if (error && !lista) { screen(`<h2 class="auth-h">Não foi possível abrir</h2><p class="auth-p">${esc(traduz(error))}</p><div class="auth-links"><button onclick="location.reload()">Tentar de novo</button></div>`); return; }
+  if (!error) LS.set("fin.espacos." + FIN.user.id, JSON.stringify(ms || []));
+  FIN.empresas = (lista || []).filter(m => m.empresas).map(m => ({ id: m.empresas.id, nome: m.empresas.nome, papel: m.papel })).sort((a, b) => a.nome.localeCompare(b.nome));
   if (!FIN.empresas.length) return telaCriarEmpresa(true);
   FIN.empresa = FIN.empresas.find(e => e.id === LS.get("fin.empresa")) || FIN.empresas[0];
   LS.set("fin.empresa", FIN.empresa.id); FIN.papel = FIN.empresa.papel;

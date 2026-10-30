@@ -705,6 +705,19 @@ details summary{cursor:pointer}
 .codbox .k{font-size:12.5px;color:var(--muted);grid-column:1}
 .codbox code{grid-column:1;font-size:12.5px;word-break:break-all;font-family:ui-monospace,Menlo,monospace}
 .codbox .btn{grid-column:2;grid-row:1 / span 2}
+
+/* lixeira */
+.lixo{display:flex;flex-direction:column}
+.lixo .lt{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:11px 0;border-bottom:1px solid var(--line)}
+.lixo .lt:last-child{border-bottom:0}
+.lixo .lt b{display:block;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lixo .lt span{display:block;font-size:12.5px;color:var(--muted)}
+.lixo .grp{font-size:12.5px;font-weight:600;color:var(--muted);margin:14px 0 2px;display:flex;justify-content:space-between;align-items:center;gap:10px}
+
+/* campos de dinheiro e de número */
+.rs-wrap{position:relative;display:block;width:100%;min-width:0}
+.rs-wrap::before{content:"R$";position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:14px;font-weight:500;pointer-events:none;z-index:1}
+.rs-wrap>input{padding-left:40px!important;width:100%}
 /* trava com PIN */
 body.travado{overflow:hidden}
 #pinLock{position:fixed;inset:0;z-index:9999;background:var(--bg);display:grid;place-items:center;padding:24px 16px;overflow:auto}
@@ -836,6 +849,11 @@ img{max-width:100%}
   .auth-side h2{font-size:60px}
   .auth-side p{font-size:19px}
 }
+/* sem internet */
+#redeBar{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:900;max-width:calc(100% - 32px);padding:10px 16px;border-radius:999px;font-size:13.5px;font-weight:500;box-shadow:0 6px 24px rgba(0,0,0,.18);text-align:center}
+#redeBar.off{background:#3a2a0a;color:#ffe7b0}
+#redeBar.envia{background:#001c28;color:#e5fb99}
+@media (max-width:760px){#redeBar{bottom:calc(84px + env(safe-area-inset-bottom,0px))}}
 </style>
 </head>
 <body>
@@ -886,7 +904,7 @@ img{max-width:100%}
 
 <script src="config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
-<script src="boot.js?v=1.14.0"></script>
+<script src="boot.js?v=1.15.0"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
 <script>
@@ -1047,7 +1065,7 @@ const AJUDA={
  bancos:["Cadastre cada conta com o saldo de hoje. É a partir dele que o app calcula o caixa.","Nos cartões, o dia de fechamento e o de vencimento dizem em qual fatura cai cada compra.","Informe o limite do cartão para ver quanto ainda está disponível."],
  contatos:["Cada nome que aparece nos lançamentos vira um contato, sozinho.","Em atraso mostra quem deve, há quanto tempo e quanto. O botão Cobrar abre o WhatsApp com a mensagem pronta.","Toque num contato para ver tudo o que já pagou ou recebeu e para guardar CPF ou CNPJ, telefone e e-mail. O telefone é usado nas cobranças e o documento no recibo."],
  importar:["Baixe o extrato no site ou no app do banco, em OFX ou CSV, e traga para cá.","O app reconhece contas já lançadas e dá baixa nelas, sem duplicar.","Também dá para trazer a planilha antiga de controle financeiro, em Excel."],
- ajustes:["Categorias, regras, centros de custo, tipo de uso e cor do app.","Regras escolhem a categoria sozinhas pelo nome ou pela descrição do extrato.","Baixe uma cópia de tudo em Excel sempre que quiser.","A trava com PIN pede 4 números para abrir o app neste aparelho. Se esquecer o PIN, é só entrar de novo com e-mail e senha.","Dados para recibos: o nome e o documento que saem no recibo de cada recebimento.","Se a empresa for MEI, ligue a opção para o app lançar o DAS todo dia 20 e acompanhar o limite de faturamento do ano.","O histórico mostra quem criou, editou, pagou ou excluiu cada conta."]};
+ ajustes:["Categorias, regras, centros de custo, tipo de uso e cor do app.","Regras escolhem a categoria sozinhas pelo nome ou pela descrição do extrato.","Baixe uma cópia de tudo em Excel sempre que quiser.","A trava com PIN pede 4 números para abrir o app neste aparelho. Se esquecer o PIN, é só entrar de novo com e-mail e senha.","Dados para recibos: o nome e o documento que saem no recibo de cada recebimento.","Se a empresa for MEI, ligue a opção para o app lançar o DAS todo dia 20 e acompanhar o limite de faturamento do ano.","O histórico mostra quem criou, editou, pagou ou excluiu cada conta.","Na Lixeira ficam por 30 dias as contas e recorrentes apagadas. Dá para restaurar uma por uma ou o grupo apagado de uma vez."]};
 $("#helpBtn").onclick=()=>{const t=S.tab,li=AJUDA[t]||[];modal(hd("Como funciona: "+(TABS[t]||""))+`<ul class="help-list">${li.map(x=>`<li>${esc(x)}</li>`).join("")}</ul><div class="actions"><button class="btn primary" data-close>Entendi</button></div>`);};
 $("#eyeBtn").onclick=()=>{S.hide=!S.hide;try{localStorage.setItem("fin.hide",S.hide?"1":"0");}catch(_){}eyeSync();render(true);};
 eyeSync();
@@ -1487,9 +1505,9 @@ function openMeta(id){
   const ms=[...(cfg().metas||[])],m=id?ms.find(x=>x.id===id):{nome:"",alvo:"",prazo:"",guardado:0};if(!m)return;
   modal(hd(id?"Editar meta":"Nova meta")+`<div class="form">
     <label class="f full">Nome da meta<input id="mt_nome" value="${esc(m.nome)}" placeholder="${T("Ex.: Reserva de caixa","Ex.: Viagem de férias")}" maxlength="60"></label>
-    <label class="f">Quanto quer juntar (R$)<input id="mt_alvo" inputmode="decimal" class="num" value="${m.alvo?fmtInput(m.alvo):""}" placeholder="0,00"></label>
+    <label class="f">Quanto quer juntar<input id="mt_alvo" inputmode="decimal" class="num" value="${m.alvo?fmtInput(m.alvo):""}" placeholder="0,00"></label>
     <label class="f">Até quando<input id="mt_prazo" type="month" value="${esc(m.prazo||"")}"><span class="help">Opcional.</span></label>
-    ${id?"":`<label class="f full">Já tem algo guardado? (R$)<input id="mt_ja" inputmode="decimal" class="num" placeholder="0,00"><span class="help">Opcional.</span></label>`}</div>
+    ${id?"":`<label class="f full">Já tem algo guardado?<input id="mt_ja" inputmode="decimal" class="num" placeholder="0,00"><span class="help">Opcional.</span></label>`}</div>
     <div id="delzone"></div>
     <div class="actions">${id?`<button class="btn danger" id="mtDel" style="margin-right:auto">Excluir</button>`:""}<button class="btn" data-close>Cancelar</button><button class="btn primary" id="mtOk">Salvar</button></div>`,
   (sh,close)=>{const g=i=>sh.querySelector("#"+i);
@@ -1503,7 +1521,7 @@ function openMeta(id){
 function openGuardar(id){
   const ms=[...(cfg().metas||[])],m=ms.find(x=>x.id===id);if(!m)return;let tipo="g";
   modal(hd(esc(m.nome))+`<div class="seg seg2" id="gdTipo"><button type="button" data-t="g" aria-pressed="true">Guardar</button><button type="button" data-t="r" aria-pressed="false">Retirar</button></div>
-    <div class="form"><label class="f">Valor (R$)<input id="gd_val" inputmode="decimal" class="num" placeholder="0,00"></label><label class="f">Data<input id="gd_data" type="date" value="${today()}"></label></div>
+    <div class="form"><label class="f">Valor<input id="gd_val" inputmode="decimal" class="num" placeholder="0,00"></label><label class="f">Data<input id="gd_data" type="date" value="${today()}"></label></div>
     <p class="hint" style="margin:0">Guardado até agora: ${money(m.guardado)} de ${money(m.alvo)}.</p>
     <div class="actions"><button class="btn" data-close>Cancelar</button><button class="btn primary" id="gdOk">Confirmar</button></div>`,
   (sh,close)=>{const g=i=>sh.querySelector("#"+i);
@@ -1715,6 +1733,7 @@ function vAjustes(){
   ${S.canWrite?`<div class="actions savebar"><button class="btn primary" data-act="savecfg">Salvar ajustes</button><span class="muted" style="font-size:13px">Bancos e cartões ficam na página Bancos e cartões.</span></div>`:""}
   ${emissorSecao()}${meiSecao()}${proSecao()}
   ${pinSecao()}
+  ${lixoSecao()}
   ${histSecao()}
   <div class="set"><div><h3>Cópia de segurança</h3><p>Planilha com todas as contas, as recorrentes e os saldos. Serve como backup e para mandar à contabilidade.</p></div>
     <div><button class="btn" data-act="export" id="btnExport"><svg class="i" viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m7.5 10.5 4.5 4.5 4.5-4.5"/><path d="M4 16.5v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>Baixar Excel</button></div></div>
@@ -2169,8 +2188,8 @@ function meiSecao(){
     <div><label class="switch"><input type="checkbox" id="mei_on" ${on?"checked":""} ${ro}> Esta empresa é MEI</label>
       <div class="form" style="margin-top:12px">
         <label class="f">Atividade<select id="mei_ativ" ${ro}>${Object.entries(MEI_ATIV).map(([k,[t,v]])=>`<option value="${k}" ${at===k?"selected":""}>${t} (${BRL.format(v)})</option>`).join("")}</select></label>
-        <label class="f">Valor do DAS (R$)<input id="mei_das" inputmode="decimal" class="num" value="${fmtInput(mi.das||MEI_ATIV[at][1])}" ${ro}><span class="help">Valores de 2026. Muda quando o salário mínimo muda.</span></label>
-        <label class="f">Limite de faturamento no ano (R$)<input id="mei_lim" inputmode="decimal" class="num" value="${fmtInput(mi.limite||MEI_LIMITE)}" ${ro}><span class="help">R$ 81.000 em 2026. No ano em que abriu, é proporcional: R$ 6.750 por mês.</span></label></div>
+        <label class="f">Valor do DAS<input id="mei_das" inputmode="decimal" class="num" value="${fmtInput(mi.das||MEI_ATIV[at][1])}" ${ro}><span class="help">Valores de 2026. Muda quando o salário mínimo muda.</span></label>
+        <label class="f">Limite de faturamento no ano<input id="mei_lim" inputmode="decimal" class="num" value="${fmtInput(mi.limite||MEI_LIMITE)}" ${ro}><span class="help">R$ 81.000 em 2026. No ano em que abriu, é proporcional: R$ 6.750 por mês.</span></label></div>
       ${S.canWrite?`<div class="actions" style="justify-content:flex-start;margin-top:12px"><button class="btn small" data-act="savemei">Salvar MEI</button></div>`:""}</div></div>`;
 }
 async function salvarMEI(){
@@ -2218,7 +2237,9 @@ let histFila=[],histTimer=null;
 function comHistorico(db){
   const embrulha=(ref,path)=>{const[col,id]=String(path).split("/");if(col!=="lancamentos"&&col!=="fixas")return ref;
     return new Proxy(ref,{get(t,k){
-      if(k==="set"||k==="update"||k==="delete")return async(...a)=>{const antes=col==="lancamentos"?S.L.get(id):S.F.get(id);const r=await t[k](...a);
+      if(k==="set"||k==="update"||k==="delete")return async(...a)=>{const antes=col==="lancamentos"?S.L.get(id):(S.F.get(id)||(S.lixoF&&S.lixoF.id===id?S.lixoF.data:undefined));
+        if(k==="delete"&&antes&&!S.restaurando){try{await db.doc("lixeira/"+col+"~"+id).set({col,id,data:antes,em:new Date().toISOString(),quem:window.FIN&&FIN.user?(FIN.nome||FIN.user.email):"Você",lote:loteLixo()});}catch(x){console.warn(x);}}
+        const r=await t[k](...a);
         try{const depois=k==="delete"?null:k==="set"?a[0]:{...(antes||{}),...a[0]};registrar(k,col,id,antes,depois,a[0]);
           if(col==="lancamentos"&&((antes&&PRO_RE.test(antes.plano||""))||(depois&&PRO_RE.test(depois.plano||"")))&&(!antes||!depois||!!antes.pago!==!!depois.pago||antes.valor!==depois.valor||antes.pago!==depois.pago))espelharPro(id,depois);}catch(x){console.warn(x);}
         return r;};
@@ -2285,7 +2306,7 @@ function openNovaDivida(){
     <form class="form" autocomplete="off" onsubmit="return false">
       <label class="f full">Nome<input id="dv_nome" placeholder="Ex.: Financiamento do carro"></label>
       <label class="f">Com quem<input id="dv_cred" placeholder="Ex.: Itaú"></label>
-      <label class="f">Valor da parcela (R$)<input id="dv_val" inputmode="decimal" class="num" placeholder="0,00"></label>
+      <label class="f">Valor da parcela<input id="dv_val" inputmode="decimal" class="num" placeholder="0,00"></label>
       <label class="f">Total de parcelas<input id="dv_de" inputmode="numeric" class="num" placeholder="Ex.: 48"></label>
       <label class="f">Quantas já pagou<input id="dv_ja" inputmode="numeric" class="num" value="0"></label>
       <label class="f">A próxima vence em<input id="dv_prox" type="date" value="${prox}"></label>
@@ -2340,7 +2361,7 @@ function openInv(id){
   modal(hd(i?esc(i.nome):"Novo investimento")+`<form class="form" autocomplete="off" onsubmit="return false">
       <label class="f full">Nome<input id="iv_nome" value="${esc(i?i.nome:"")}" placeholder="Ex.: Tesouro Selic, CDB, Ações" ${ro?"disabled":""}></label>
       <label class="f full">Onde ou para quê<input id="iv_obs" value="${esc(i?i.obs||"":"")}" placeholder="Opcional. Ex.: Reserva de emergência, XP" ${ro?"disabled":""}></label>
-      ${i?"":`<label class="f">Valor hoje (R$)<input id="iv_val" inputmode="decimal" class="num" placeholder="0,00"></label>`}</form>
+      ${i?"":`<label class="f">Valor hoje<input id="iv_val" inputmode="decimal" class="num" placeholder="0,00"></label>`}</form>
     ${i&&(i.hist||[]).length?`<div><h2 style="margin:0 0 8px;font-size:15px">Atualizações</h2><div class="hist">${(i.hist||[]).slice().reverse().slice(0,24).map(h=>`<div class="h"><time>${br(h.d)}</time><span><b>${money(h.v)}</b>${h.ap?` <em>${h.ap>0?"colocou":"tirou"} ${money(Math.abs(h.ap))}</em>`:""}</span></div>`).join("")}</div></div>`:""}
     ${ro?"":`<div id="delzone"></div><div class="actions">${i?'<button class="btn danger" id="ivDel" style="margin-right:auto">Excluir</button>':""}<button class="btn" data-close type="button">Cancelar</button><button class="btn primary" id="ivOk" type="button">Salvar</button></div>`}`,
   (sh,close)=>{if(ro)return;const g=x=>sh.querySelector("#"+x);
@@ -2357,7 +2378,7 @@ function openAtualInv(id){
   const i=S.I&&S.I.get(id);if(!i||!S.canWrite)return;
   modal(hd("Atualizar: "+esc(i.nome))+`<p class="muted" style="margin:0;font-size:13.5px">Hoje ele está com ${money(invAtual(i))} no app. Olhe o extrato e informe o valor de agora.</p>
     <form class="form" autocomplete="off" onsubmit="return false">
-      <label class="f">Valor hoje (R$)<input id="ia_val" inputmode="decimal" class="num" placeholder="0,00"></label>
+      <label class="f">Valor hoje<input id="ia_val" inputmode="decimal" class="num" placeholder="0,00"></label>
       <label class="f">Colocou ou tirou dinheiro?<input id="ia_ap" inputmode="decimal" class="num" placeholder="Opcional"><span class="help">Desde a última vez. Use o sinal de menos para retirada. Assim o app separa o que foi rendimento.</span></label></form>
     <div class="actions"><button class="btn" data-close type="button">Cancelar</button><button class="btn primary" id="iaOk" type="button">Atualizar</button></div>`,
   (sh,close)=>{sh.querySelector("#iaOk").onclick=async()=>{const v=parseMoney(sh.querySelector("#ia_val").value),apT=sh.querySelector("#ia_ap").value.trim(),ap=apT?parseMoney(apT.replace("−","-")):0;
@@ -2632,6 +2653,111 @@ async function pacoteContador(btn){
   finally{if(btn&&btn.isConnected){btn.disabled=false;btn.innerHTML=tx;}}
 }
 
+/* ---------- lixeira ---------- */
+let loteAtual=null,loteTimer=null;
+function loteLixo(){if(!loteAtual)loteAtual="l"+Date.now().toString(36);clearTimeout(loteTimer);loteTimer=setTimeout(()=>{loteAtual=null;},2500);return loteAtual;}
+let limpouLixo=false;
+async function limparLixeira(){
+  if(limpouLixo||!S.canWrite||!S.X)return;limpouLixo=true;
+  const lim=new Date(Date.now()-30*864e5).toISOString();
+  for(const[id,x]of S.X)if((x.em||"")<lim){try{await S.db.doc("lixeira/"+id).delete();}catch(_){}}
+}
+const lixoTxt=x=>{const d=x.data||{};return x.col==="fixas"?`Recorrente: ${d.credor||"(sem nome)"} · ${BRL.format(Number(d.valor)||0)} por mês`:`${d.credor||"(sem nome)"} · ${BRL.format(Number(d.valor)||0)} · vence ${br(d.venc||"")}`;};
+function lixoSecao(){
+  const n=(S.X||new Map()).size;
+  return `<div class="set" id="setLixo"><div><h3>Lixeira</h3><p>Contas e recorrentes apagadas ficam aqui por 30 dias. Dá para restaurar.</p></div>
+    <div>${n?`<p style="margin:0 0 10px;font-size:14px"><b>${n}</b> ite${n>1?"ns":"m"} na lixeira.</p><button class="btn small" data-act="lixeira">Abrir a lixeira</button>`:`<p class="muted" style="margin:0;font-size:13.5px">Vazia.</p>`}</div></div>`;
+}
+async function restaurar(ids){
+  S.restaurando=true;let n=0;
+  try{for(const k of ids){const x=S.X.get(k);if(!x)continue;await S.db.doc(x.col+"/"+x.id).set(x.data);await S.db.doc("lixeira/"+k).delete();n++;}}
+  finally{S.restaurando=false;}
+  return n;
+}
+function openLixeira(){
+  const desenha=()=>{const its=[...(S.X||new Map()).entries()].sort((a,b)=>(b[1].em||"").localeCompare(a[1].em||""));
+    if(!its.length)return `<div class="empty"><b>A lixeira está vazia.</b></div>`;
+    const lotes=new Map();its.forEach(([k,x])=>{const l=x.lote||k;if(!lotes.has(l))lotes.set(l,[]);lotes.get(l).push([k,x]);});
+    return `<div class="lixo">${[...lotes.entries()].map(([l,arr])=>{const x0=arr[0][1],dias=Math.max(0,30-Math.floor((Date.now()-Date.parse(x0.em))/864e5));
+      return `<div class="grp"><span>Apagado${arr.length>1?"s":""} em ${quando(x0.em)} por ${esc(x0.quem||"")} · some em ${dias} dia${dias===1?"":"s"}</span>${S.canWrite&&arr.length>1?`<button class="btn small" data-rest="${esc(arr.map(a=>a[0]).join(","))}">Restaurar os ${arr.length}</button>`:""}</div>`
+        +arr.slice(0,arr.length>4?3:4).map(([k,x])=>`<div class="lt"><span style="min-width:0"><b>${esc(lixoTxt(x))}</b><span>${x.col==="fixas"?"Conta que se repete":esc((x.data||{}).plano||"")}</span></span>${S.canWrite?`<button class="btn small" data-rest="${esc(k)}">Restaurar</button>`:""}</div>`).join("")+(arr.length>4?`<div class="lt"><span class="muted" style="font-size:13px">e mais ${arr.length-3} ite${arr.length-3>1?"ns":"m"} apagado${arr.length-3>1?"s":""} junto${arr.length-3>1?"s":""}</span></div>`:"");}).join("")}</div>`;};
+  modal(hd("Lixeira")+`<p class="muted" style="margin:0;font-size:13.5px">Itens apagados nos últimos 30 dias. Depois disso, somem de vez.</p><div id="lxBox">${desenha()}</div>
+    ${S.canWrite&&(S.X||new Map()).size?`<div id="delzone"></div><div class="actions"><button class="btn danger" id="lxVazia" style="margin-right:auto">Esvaziar a lixeira</button><button class="btn" data-close>Fechar</button></div>`:`<div class="actions"><button class="btn" data-close>Fechar</button></div>`}`,
+  (sh,close)=>{
+    sh.querySelector("#lxBox").addEventListener("click",async e=>{const b=e.target.closest("[data-rest]");if(!b)return;b.disabled=true;
+      try{const n=await restaurar(b.dataset.rest.split(","));toast(n>1?n+" itens restaurados":"Item restaurado");sh.querySelector("#lxBox").innerHTML=desenha();}catch(x){toast(writeErr(x));b.disabled=false;}});
+    const v=sh.querySelector("#lxVazia");if(v)v.onclick=()=>{sh.querySelector("#delzone").innerHTML=`<div class="note warn"><b>Apagar de vez tudo o que está na lixeira?</b> Não dá para desfazer.<div class="actions" style="margin-top:10px"><button class="btn danger small" id="lxOk">Esvaziar</button></div></div>`;
+      sh.querySelector("#lxOk").onclick=async()=>{try{for(const k of [...S.X.keys()])await S.db.doc("lixeira/"+k).delete();toast("Lixeira esvaziada");close();}catch(x){err(sh,writeErr(x));}};};
+  });
+}
+
+/* ---------- fatura ou extrato em PDF ---------- */
+async function libPDFjs(){
+  if(window.pdfjsLib)return window.pdfjsLib;
+  await new Promise((ok,no)=>{const x=document.createElement("script");x.src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js";x.onload=ok;x.onerror=()=>no(new Error("lib"));document.head.appendChild(x);});
+  if(!window.pdfjsLib)throw new Error("lib");
+  window.pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
+  return window.pdfjsLib;
+}
+async function linhasPDF(file){
+  const lib=await libPDFjs();let pdf;
+  try{pdf=await lib.getDocument({data:new Uint8Array(await file.arrayBuffer()),isEvalSupported:false}).promise;}
+  catch(x){if(x&&(x.name==="PasswordException"||/password/i.test(x.message||"")))throw new Error("senha");throw x;}
+  const out=[];
+  for(let p=1;p<=Math.min(pdf.numPages,40);p++){const pg=await pdf.getPage(p),tc=await pg.getTextContent();
+    const its=tc.items.filter(i=>i.str&&i.str.trim()).map(i=>({x:i.transform[4],y:i.transform[5],w:i.width||0,s:i.str}));
+    const rows=[];its.sort((a,b)=>b.y-a.y||a.x-b.x).forEach(i=>{const r=rows.find(r=>Math.abs(r.y-i.y)<3);if(r)r.its.push(i);else rows.push({y:i.y,its:[i]});});
+    rows.forEach(r=>{r.its.sort((a,b)=>a.x-b.x);let t="",fim=null;r.its.forEach(i=>{t+=(fim!==null&&i.x-fim>1.5?" ":"")+i.s;fim=i.x+i.w;});out.push(t.replace(/\s+/g," ").trim());});}
+  return out;
+}
+const MES_ABR={jan:1,fev:2,mar:3,abr:4,mai:5,jun:6,jul:7,ago:8,set:9,out:10,nov:11,dez:12};
+function movimentosPDF(linhas,kind){
+  const txt=linhas.join("\n"),hoje=today();
+  let ref=null,m=txt.match(/vencimento[^\d\n]{0,40}(\d{2})[\/.](\d{2})[\/.](\d{2,4})/i)||txt.match(/(\d{2})[\/.](\d{2})[\/.](\d{4})/);
+  if(m){let y=+m[3];if(y<100)y+=2000;ref={y,m:+m[2]};}
+  const pula=/pagamento (recebido|efetuado|de fatura|da fatura|fatura)|^pagamentos?\b|saldo anterior|saldo (do dia|final|em conta|disponivel)|^saldo\b|total (da fatura|de compras|a pagar|geral|nacional|internacional|desta|do)|^total\b|limite (total|disponivel|de credito)|pagamento minimo|valor minimo|credito rotativo|encargos (do|para|financeiros previstos)|melhor dia|fatura anterior|^resumo/i;
+  const out=[],vistos=new Set();
+  for(const l0 of linhas){
+    const l=l0.replace(/\s+/g," ").trim(),n=normTxt(l);if(!l||pula.test(n))continue;
+    let dia,mes,ano=null,resto;
+    let d=l.match(/^(\d{1,2})[\/.](\d{1,2})(?:[\/.](\d{2,4}))?\s+(.+)$/);
+    if(d){dia=+d[1];mes=+d[2];if(d[3]){ano=+d[3];if(ano<100)ano+=2000;}resto=d[4];}
+    else{d=l.match(/^(\d{1,2})\s?(?:de\s)?(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)[a-zç]*\.?(?:\s?(?:de\s)?(\d{4}))?\s+(.+)$/i);if(!d)continue;dia=+d[1];mes=MES_ABR[d[2].toLowerCase()];if(d[3])ano=+d[3];resto=d[4];}
+    if(!(mes>=1&&mes<=12&&dia>=1&&dia<=31))continue;
+    const v=resto.match(/(?:^|\s)(-|−|\+)?\s?(?:R\$\s?)?(\d{1,3}(?:\.\d{3})*,\d{2})\s?(-|D|C)?$/i);if(!v)continue;
+    let desc=resto.slice(0,v.index).replace(/\s+(US\$|USD|R\$)\s?[\d.,]+$/i,"").trim();if(!desc||desc.length<2)continue;
+    const val=parseSigned(v[2]);if(!(val>0))continue;
+    const neg=v[1]==="-"||v[1]==="−"||v[3]==="-"||/^d$/i.test(v[3]||""),pos=v[1]==="+"||/^c$/i.test(v[3]||"");
+    if(!ano){if(ref){ano=ref.y;if(mes>ref.m)ano--;}else{ano=+hoje.slice(0,4);if(ymKey(ano,mes)>ymOf(hoje))ano--;}}
+    const data=dateFor(ano,mes,dia),nd=normTxt(desc);
+    let sinal;
+    if(kind==="cartao")sinal=(neg||/estorno|credito de|reembolso|cashback|devolucao/.test(nd))?1:-1;
+    else sinal=neg?-1:pos?1:(/recebid|recebimento|deposito|credito|salario|rendimento|resgate|estorno|devolucao|ted rec|pix rec|transf.* rec/.test(nd)?1:-1);
+    const chave=data+"|"+nd+"|"+val.toFixed(2);
+    out.push({data,valor:r2(val*sinal),desc:desc.replace(/\s+/g," "),fitid:"pdf-"+h32(chave+"|"+out.length)});
+  }
+  return out;
+}
+async function lerPDF(file){const ls=await linhasPDF(file);return movimentosPDF(ls,destInfo(S.imp.dest).kind);}
+
+/* ---------- só números nos campos de número, R$ nos campos de dinheiro ---------- */
+const FMT2=new Intl.NumberFormat("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2});
+document.addEventListener("input",e=>{const t=e.target;if(!(t instanceof HTMLInputElement))return;const im=t.getAttribute("inputmode"),v=t.value;let n;
+  if(im==="decimal"){n=v.replace(/[^\d.,\-−]/g,"").replace(/−/g,"-").replace(/(?!^)-/g,"");}
+  else if(im==="numeric"){n=/doc$/.test(t.id)?v.replace(/[^\d.\/\-]/g,""):v.replace(/\D/g,"");}
+  else if(im==="tel"){n=v.replace(/[^\d()+\s\-]/g,"");}
+  else return;
+  if(n!==v){const pos=Math.max(0,(t.selectionStart||n.length)-(v.length-n.length));t.value=n;try{t.setSelectionRange(pos,pos);}catch(_){}}
+},true);
+document.addEventListener("focusout",e=>{const t=e.target;if(!(t instanceof HTMLInputElement)||t.getAttribute("inputmode")!=="decimal"||!t.value.trim())return;
+  const v=parseMoney(t.value);if(!isNaN(v)){const f=(v<0?"-":"")+FMT2.format(Math.abs(v));if(f!==t.value){t.value=f;t.dispatchEvent(new Event("input",{bubbles:true}));}}},true);
+document.addEventListener("keydown",e=>{const t=e.target;if(!(t instanceof HTMLInputElement)||e.ctrlKey||e.metaKey||e.altKey||e.key.length!==1)return;const im=t.getAttribute("inputmode");
+  if(im==="decimal"&&!/[\d.,\-]/.test(e.key))e.preventDefault();
+  else if(im==="numeric"&&!(/doc$/.test(t.id)?/[\d.\/\-]/:/\d/).test(e.key))e.preventDefault();},true);
+function moedaPrefix(root){(root.querySelectorAll?root:document).querySelectorAll('input[inputmode="decimal"]:not([data-rs])').forEach(i=>{i.dataset.rs="1";if(i.value&&document.activeElement!==i){const v=parseMoney(i.value);if(!isNaN(v))i.value=(v<0?"-":"")+FMT2.format(Math.abs(v));}if(i.parentElement&&i.parentElement.classList.contains("rs-wrap"))return;const foco=document.activeElement===i,w=document.createElement("span");w.className="rs-wrap";i.parentNode.insertBefore(w,i);w.appendChild(i);if(foco)i.focus();});}
+new MutationObserver(ms=>{for(const m of ms)for(const nd of m.addedNodes)if(nd.nodeType===1){if(nd.matches&&nd.matches('input[inputmode="decimal"]'))moedaPrefix(nd.parentNode);else if(nd.querySelector&&nd.querySelector('input[inputmode="decimal"]'))moedaPrefix(nd);}}).observe(document.body,{childList:true,subtree:true});
+moedaPrefix(document);
+
 /* ---------- eventos da tela ---------- */
 view.addEventListener("click",e=>{
   const tm=e.target.closest("button[data-tema]");if(tm&&view.contains(tm)){const k=tm.dataset.tema;if(k==="finance")delete document.documentElement.dataset.tema;else document.documentElement.dataset.tema=k;try{localStorage.setItem("fin.tema",k);}catch(_){}render(true);return;}
@@ -2666,6 +2792,7 @@ view.addEventListener("click",e=>{
   else if(act==="savemei")salvarMEI();
   else if(act==="savepro")salvarPro();
   else if(act==="historico")openHistorico();
+  else if(act==="lixeira")openLixeira();
   else if(act==="pincriar")openPin("criar");
   else if(act==="pintrocar")openPin("trocar");
   else if(act==="pintirar")openPin("tirar");
@@ -2782,7 +2909,7 @@ function openNew(kind,pre){
   if(car){
     const cs=cartoes();
     corpo=cs.length?`
-      <label class="f">Valor da compra (R$)<input id="n_val" inputmode="decimal" class="num" placeholder="0,00"></label>
+      <label class="f">Valor da compra<input id="n_val" inputmode="decimal" class="num" placeholder="0,00"></label>
       <label class="f">Em quantas vezes<input id="n_np" inputmode="numeric" class="num" value="1"></label>
       <label class="f">Cartão<select id="n_cartao">${opts(cs,cs.length===1?cs[0]:"",cs.length===1?undefined:"Escolha o cartão")}</select></label>
       <label class="f">Data da compra<input id="n_compra" type="date" value="${t}"></label>
@@ -2792,14 +2919,14 @@ function openNew(kind,pre){
       <label class="f full">O que foi comprado<input id="n_obs" placeholder="Opcional. Ex.: Notebook da Juliana"></label>
       <details class="full"><summary class="muted" style="font-size:13px">Compra antiga ou com juros</summary><div class="form" style="margin-top:10px">
         <label class="f">Próxima parcela a vencer é a nº<input id="n_ini" inputmode="numeric" class="num" value="1"><span class="help">A data acima passa a ser a dessa parcela.</span></label>
-        <label class="f">Valor de cada parcela (R$)<input id="n_vp" inputmode="decimal" class="num" placeholder="Só se teve juros"></label></div></details>
+        <label class="f">Valor de cada parcela<input id="n_vp" inputmode="decimal" class="num" placeholder="Só se teve juros"></label></div></details>
       <div class="calc full" id="prev">Preencha o valor para ver as parcelas.</div>`
       :`<div class="note full">Cadastre um cartão primeiro, com o dia em que a fatura fecha e vence. Assim o app descobre sozinho em qual fatura cai cada compra.</div><div class="full"><button class="btn primary" type="button" data-novocartao>Cadastrar cartão</button></div>`;
   }else{
     corpo=`
       <details class="full colar" ${pre.cod?"open":""}><summary>${ent?"Tem um Pix copia e cola? Cole aqui":"Tem o código do boleto ou do Pix? Cole aqui"}</summary>
         <label class="f" style="margin-top:8px"><span class="sr" style="position:absolute;left:-9999px">Código</span><input id="n_cod" placeholder="${ent?"Pix copia e cola":"Linha digitável do boleto ou Pix copia e cola"}" autocomplete="off" value="${esc(pre.cod||"")}"><span class="help" id="codHint"></span></label></details>
-      <label class="f">Valor (R$)<input id="n_val" inputmode="decimal" class="num" placeholder="0,00"></label>
+      <label class="f">Valor<input id="n_val" inputmode="decimal" class="num" placeholder="0,00"></label>
       <label class="f">${ent?"Data prevista":"Vencimento"}<input id="n_venc" type="date" value="${defV}"></label>
       <label class="f full">${ent?"De quem você recebe":"Para quem você paga"}<input id="n_cred" list="credores" placeholder="Nome da empresa ou pessoa">${credList()}</label>
       ${cats}
@@ -2895,7 +3022,7 @@ function openTransf(){
   modal(hd("Transferência entre contas")+`<div class="form">
     <label class="f">Sai de<select id="t_de">${opts(bs,bs[0])}</select></label>
     <label class="f">Entra em<select id="t_para">${opts(bs,bs[1])}</select></label>
-    <label class="f">Valor (R$)<input id="n_val" inputmode="decimal" class="num" placeholder="0,00"></label>
+    <label class="f">Valor<input id="n_val" inputmode="decimal" class="num" placeholder="0,00"></label>
     <label class="f">Data<input id="n_venc" type="date" value="${today()}"></label>
     <label class="f full">Observação<input id="n_obs" placeholder="Opcional. Ex.: reforço de caixa"></label></div>
     <div class="note">Muda o saldo das duas contas, mas não conta como receita nem como despesa nos relatórios.</div>
@@ -2913,7 +3040,7 @@ function openTransfEdit(l){
   const par=l.origem.par,ids=["tr-"+par+"-s","tr-"+par+"-e"],ro=!S.canWrite;
   const s0=S.L.get(ids[0])||{},e0=S.L.get(ids[1])||{};
   modal(hd("Transferência")+`<div class="calc"><span>${esc(s0.banco||"?")} → ${esc(e0.banco||"?")}</span><b>${money(l.valor)}</b></div>
-    <div class="form"><label class="f">Valor (R$)<input id="x_val" inputmode="decimal" class="num" value="${fmtInput(l.valor)}" ${ro?"disabled":""}></label>
+    <div class="form"><label class="f">Valor<input id="x_val" inputmode="decimal" class="num" value="${fmtInput(l.valor)}" ${ro?"disabled":""}></label>
     <label class="f">Data<input id="x_dt" type="date" value="${l.venc}" ${ro?"disabled":""}></label>
     <label class="f full">Observação<input id="x_obs" value="${esc(l.obs)}" ${ro?"disabled":""}></label></div><div id="delzone"></div>
     ${ro?"":`<div class="actions"><button class="btn danger" id="trDel" style="margin-right:auto">Excluir</button><button class="btn primary" id="trOk">Salvar</button></div>`}`,
@@ -2948,7 +3075,7 @@ function openPay(id){
   modal(hd((inn?"Recebi":"Paguei")+": "+esc(l.credor))+`
     <div class="form">
       <label class="f">Data do ${inn?"recebimento":"pagamento"}<input id="p_data" type="date" value="${today()}"></label>
-      <label class="f">Valor ${inn?"recebido":"pago"} (R$)<input id="p_val" inputmode="decimal" class="num" value="${fmtInput(l.valor)}"><span class="help">Corrija se foi diferente do previsto.</span></label>
+      <label class="f">Valor ${inn?"recebido":"pago"}<input id="p_val" inputmode="decimal" class="num" value="${fmtInput(l.valor)}"><span class="help">Corrija se foi diferente do previsto.</span></label>
       <label class="f full">${inn?"Entrou em qual banco":"Saiu de qual banco"}<select id="p_banco">${opts(bancos(),l.banco||(bancos().length===1?bancos()[0]:""),"Escolha o banco")}</select></label>
       ${ANX.up?`<label class="f full">Comprovante (opcional)<input type="file" id="p_anx" accept="image/*,application/pdf"><span class="help">Foto ou PDF. Pode anexar depois também.</span></label>`:""}
     </div>
@@ -2980,13 +3107,13 @@ function openEdit(id){
     ${ori?`<div class="note">${ori}${l.origem.t==="fixa"?" Mudar aqui altera só este mês.":""}</div>`:""}
     <form class="form" autocomplete="off" onsubmit="return false">
       <label class="f">Vencimento<input id="e_venc" type="date" value="${l.venc}" ${ro?"disabled":""}></label>
-      <label class="f">Valor (R$)<input id="e_val" inputmode="decimal" class="num" value="${fmtInput(l.valor)}" ${ro?"disabled":""}></label>
+      <label class="f">Valor<input id="e_val" inputmode="decimal" class="num" value="${fmtInput(l.valor)}" ${ro?"disabled":""}></label>
       <label class="f full">Para quem paga ou de quem recebe<input id="e_cred" list="credores" value="${esc(l.credor)}" ${ro?"disabled":""}>${credList()}</label>
       <label class="f full">Plano de contas<select id="e_plano" ${ro?"disabled":""}>${planoOpts(l.plano)}</select></label>
       ${classif("e",l)}
       <label class="f full">Observação<input id="e_obs" value="${esc(l.obs)}" ${ro?"disabled":""}></label>
       ${PES()&&!inn&&!isTr(l)?`<label class="f">Dividir com<input id="e_dcom" list="pessoasDiv" value="${esc(l.divisao&&l.divisao.com||"")}" placeholder="Nome da pessoa" ${ro?"disabled":""}><datalist id="pessoasDiv">${[...new Set(live().map(x=>x.divisao&&x.divisao.com).filter(Boolean))].map(n=>`<option value="${esc(n)}">`).join("")}</datalist><span class="help">Opcional. Para contas que alguém vai te pagar uma parte.</span></label>
-      <label class="f">Parte da pessoa (R$)<input id="e_dparte" inputmode="decimal" class="num" value="${l.divisao?fmtInput(l.divisao.parte):""}" placeholder="Metade" ${ro?"disabled":""}>${l.divisao&&l.divisao.acertado?`<span class="help">Acertado em ${br(l.divisao.acertado)}.</span>`:""}</label>`:""}
+      <label class="f">Parte da pessoa<input id="e_dparte" inputmode="decimal" class="num" value="${l.divisao?fmtInput(l.divisao.parte):""}" placeholder="Metade" ${ro?"disabled":""}>${l.divisao&&l.divisao.acertado?`<span class="help">Acertado em ${br(l.divisao.acertado)}.</span>`:""}</label>`:""}
       ${l.pago?`<label class="f">Data do ${inn?"recebimento":"pagamento"}<input id="e_pago" type="date" value="${l.pago}" ${ro?"disabled":""}></label>`:""}
       ${inn&&!l.pago?`<label class="f full">Telefone para cobrança (opcional)<input id="e_tel" inputmode="tel" value="${esc(l.tel||telDe(l.credor)||"")}" placeholder="(21) 99999-9999" ${ro?"disabled":""}><span class="help">Com o número, o WhatsApp já abre na conversa certa.</span></label>`:""}
     </form>
@@ -3040,7 +3167,7 @@ function openFixa(fid){
   modal(hd("Conta fixa")+`
     <div class="form">
       <label class="f">Dia do vencimento<input id="x_dia" inputmode="numeric" class="num" value="${f.dia}"></label>
-      <label class="f">Valor por mês (R$)<input id="x_val" inputmode="decimal" class="num" value="${fmtInput(f.valor)}"></label>
+      <label class="f">Valor por mês<input id="x_val" inputmode="decimal" class="num" value="${fmtInput(f.valor)}"></label>
       <label class="f full">Para quem paga ou de quem recebe<input id="x_cred" list="credores" value="${esc(f.credor)}">${credList()}</label>
       <label class="f full">Plano de contas<select id="x_plano">${planoOpts(f.plano)}</select></label>
       ${classif("x",f)}
@@ -3074,7 +3201,7 @@ function openFixa(fid){
       <div class="actions" style="margin-top:10px"><button class="btn small" id="dNo">Não</button><button class="btn danger small" id="dYes">Excluir</button></div></div>`;
       g("dNo").onclick=()=>g("delzone").innerHTML="";
       g("dYes").onclick=async()=>{try{const ids=futuras().map(([i])=>i),cf=JSON.parse(JSON.stringify(f)),cl=ids.map(i=>[i,JSON.parse(JSON.stringify(S.L.get(i)))]);
-        S.F.delete(fid);await S.db.doc("fixas/"+fid).delete();for(const i of ids)await S.db.doc("lancamentos/"+i).delete();close();
+        S.lixoF={id:fid,data:S.F.get(fid)};S.F.delete(fid);await S.db.doc("fixas/"+fid).delete();for(const i of ids)await S.db.doc("lancamentos/"+i).delete();close();
         toast("Conta fixa excluída",{fn:async()=>{S.F.set(fid,cf);await S.db.doc("fixas/"+fid).set(cf);for(const[i,c]of cl)await S.db.doc("lancamentos/"+i).set(c);}});}catch(x){err(sh,writeErr(x));}};};
   });
 }
@@ -3131,7 +3258,7 @@ function openBanco(i){
       <div class="bk-list" id="bkList">${chips("")}</div></div>`:""}
     <label class="f full">Nome do banco ou conta<input id="bk_nome" value="${esc(b.nome)}" placeholder="Escolha acima ou digite. Ex.: ${T("Itaú PJ","Itaú")}"><span class="help">Pode personalizar. Ex.: ${T("Itaú PJ, Inter Empresas","Nubank, Itaú conjunta")}.</span></label>
     <div class="f full"><span>Cor</span><div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap"><span id="bkPrev">${selo(b.nome||"?",cor)}</span>${tonsHTML("bkTons",cor||tomDe(b.nome,""))}</div></div>
-    <label class="f full">Saldo inicial (R$)<input id="bk_saldo" inputmode="decimal" class="num" value="${fmtInput(b.saldo)}" placeholder="0,00"><span class="help">Quanto havia nesta conta no dia anterior à primeira conta lançada no aplicativo. Pode ser negativo, com sinal de menos.</span></label></div>
+    <label class="f full">Saldo inicial<input id="bk_saldo" inputmode="decimal" class="num" value="${fmtInput(b.saldo)}" placeholder="0,00"><span class="help">Quanto havia nesta conta no dia anterior à primeira conta lançada no aplicativo. Pode ser negativo, com sinal de menos.</span></label></div>
     <div id="delzone"></div>
     <div class="actions">${i>=0?`<button class="btn danger" id="bkDel" style="margin-right:auto">Excluir</button>`:""}<button class="btn" data-close>Cancelar</button><button class="btn primary" id="bkOk">Salvar</button></div>`,
   (sh,close)=>{const g=x=>sh.querySelector("#"+x);
@@ -3156,7 +3283,7 @@ function openCartao(i){
   modal(hd(i>=0?"Editar cartão":"Novo cartão")+`<div id="ccPrev" style="max-width:320px">${cartaoHTML(c,0,false)}</div><div class="form">
     <label class="f full">Nome do cartão<input id="cc_nome" value="${esc(c.nome)}" placeholder="Ex.: ${T("Nubank PJ, Itaú Visa","Nubank, Itaú Click")}"></label>
     <label class="f">Últimos 4 números<input id="cc_final" inputmode="numeric" maxlength="4" class="num" value="${esc(c.final||"")}" placeholder="Opcional"><span class="help">Só para reconhecer o cartão.</span></label>
-    <label class="f">Limite total (R$)<input id="cc_lim" inputmode="decimal" class="num" value="${c.limite?fmtInput(c.limite):""}" placeholder="Opcional"><span class="help">Para mostrar quanto ainda está disponível.</span></label>
+    <label class="f">Limite total<input id="cc_lim" inputmode="decimal" class="num" value="${c.limite?fmtInput(c.limite):""}" placeholder="Opcional"><span class="help">Para mostrar quanto ainda está disponível.</span></label>
     <div class="f full"><span>Cor do cartão</span>${tonsHTML("ccTons",cor||tomDe(c.nome,""))}</div>
     <label class="f full">Banco que paga a fatura<select id="cc_banco">${opts(bancos(),c.banco||"","Escolha")}</select></label>
     <label class="f">Dia que a fatura fecha<input id="cc_fecha" inputmode="numeric" class="num" value="${esc(c.fecha||"")}" placeholder="Ex.: 3"></label>
@@ -3298,8 +3425,8 @@ function vImportar(){
       ${info.kind==="cartao"?`<label class="f full">Vencimento desta fatura<input type="date" id="imFat" value="${I.fat}"><span class="help">As compras novas entram como contas a pagar nesta data. ${cc&&cc.vence?"":"Cadastre o dia de vencimento do cartão para isso vir certo."}</span></label>`:""}
     </div></div>
     <div class="card"><h3>2. Escolha o arquivo</h3>
-      <label class="drop" for="imFile" style="margin-top:12px"><svg class="i" viewBox="0 0 24 24"><path d="M12 15V3"/><path d="m7.5 7.5 4.5-4.5 4.5 4.5"/><path d="M4 15.5v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg><b>Clique aqui ou arraste o arquivo</b><span>OFX ou CSV, baixado no site ou aplicativo do banco</span></label>
-      <input type="file" id="imFile" accept=".ofx,.OFX,.csv,.CSV,.txt,.TXT" hidden>
+      <label class="drop" for="imFile" style="margin-top:12px"><svg class="i" viewBox="0 0 24 24"><path d="M12 15V3"/><path d="m7.5 7.5 4.5-4.5 4.5 4.5"/><path d="M4 15.5v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg><b>Clique aqui ou arraste o arquivo</b><span>OFX, CSV ou PDF da fatura ou do extrato, baixado no site ou aplicativo do banco</span></label>
+      <input type="file" id="imFile" accept=".ofx,.OFX,.csv,.CSV,.txt,.TXT,.pdf,.PDF" hidden>
       <details style="margin-top:14px"><summary style="cursor:pointer;font-weight:600;color:var(--muted);font-size:14px">Onde encontro esse arquivo?</summary>
       <p style="font-size:14px;color:var(--muted);margin:.6em 0 0">No internet banking, procure Extrato e depois Exportar ou Salvar. Escolha o formato <b>OFX</b> (às vezes aparece como "Money" ou "Quicken"). Se não houver OFX, escolha <b>CSV</b> ou Excel salvo como CSV. Na fatura do cartão, o Nubank e a maioria dos bancos oferecem CSV ou OFX.</p></details>
     </div>
@@ -3351,6 +3478,12 @@ function vImportar(){
 }
 async function lerArquivo(file){
   const I=S.imp;I.file=file.name;
+  if(/\.pdf$/i.test(file.name)||file.type==="application/pdf"){
+    try{toast("Lendo o PDF...");const its=await lerPDF(file);
+      if(!its.length){toast("Não encontrei compras ou movimentos neste PDF. Se ele for uma foto escaneada, baixe de novo pelo app do banco, em PDF, OFX ou CSV.");return;}
+      buildReview(its);render(true);toast(its.length+" movimento"+(its.length>1?"s":"")+" encontrados no PDF. Confira antes de importar.");}
+    catch(x){console.warn(x);toast(x&&x.message==="senha"?"Este PDF tem senha. Abra no computador, salve uma cópia sem senha e tente de novo.":x&&x.message==="lib"?"Não consegui carregar o leitor de PDF. Confira a internet.":"Não consegui ler este PDF");}
+    return;}
   try{const t=decodeBuf(await file.arrayBuffer());
     if(/\.ofx$/i.test(file.name)||/<OFX>|<STMTTRN>/i.test(t)){const its=parseOFX(t);if(!its.length){toast("Não achei movimentos neste OFX");return;}buildReview(its);}
     else{const r=parseCSV(t);if(!r.body.length){toast("Não achei linhas neste arquivo");return;}Object.assign(I,r,{sinal:destInfo(I.dest).kind==="cartao"?"desp":"rec",step:"map"});}
@@ -3613,6 +3746,7 @@ document.addEventListener("visibilitychange",()=>{if(!document.hidden)checarDia(
   db.collection("dividas").onSnapshot(s=>{S.D=new Map(s.docs.map(d=>[d.id,d.data()]));if(S.tab==="pat")render();},e=>console.warn(e));
   db.collection("investimentos").onSnapshot(s=>{S.I=new Map(s.docs.map(d=>[d.id,d.data()]));if(S.tab==="pat")render();},e=>console.warn(e));
   db.collection("contatos").onSnapshot(s=>{S.C=new Map(s.docs.map(d=>[d.id,d.data()]));if(["contatos","contas"].includes(S.tab))render();},e=>console.warn(e));
+  db.collection("lixeira").onSnapshot(s=>{S.X=new Map(s.docs.map(d=>[d.id,d.data()]));limparLixeira();if(S.tab==="ajustes"){const el=document.getElementById("setLixo");if(el)el.outerHTML=lixoSecao();}},e=>console.warn(e));
   db.collection("historico").onSnapshot(s=>{S.H=new Map(s.docs.map(d=>[d.id,d.data()]));if(S.tab==="ajustes"){const el=document.getElementById("setHist");if(el)el.outerHTML=histSecao();}},e=>console.warn(e));
   db.collection("fixas").onSnapshot(s=>{
     S.F=new Map(s.docs.map(d=>[d.id,d.data()]));
